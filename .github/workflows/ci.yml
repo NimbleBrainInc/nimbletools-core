@@ -54,7 +54,7 @@ jobs:
         run: make ci-check
 
       - name: Upload coverage reports
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           file: ./control-plane/coverage.xml
           flags: control-plane
@@ -85,7 +85,7 @@ jobs:
         run: make ci-check
 
       - name: Upload coverage reports
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           file: ./operator/coverage.xml
           flags: operator
@@ -116,7 +116,7 @@ jobs:
         run: make ci-check
 
       - name: Upload coverage reports
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           file: ./universal-adapter/coverage.xml
           flags: universal-adapter
@@ -147,7 +147,7 @@ jobs:
         run: make ci-check
 
       - name: Upload coverage reports
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           file: ./rbac-controller/coverage.xml
           flags: rbac-controller
