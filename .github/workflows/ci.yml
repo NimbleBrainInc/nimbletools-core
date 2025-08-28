@@ -1,0 +1,273 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # Detect which projects have changes
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      control-plane: ${{ steps.changes.outputs.control-plane }}
+      operator: ${{ steps.changes.outputs.operator }}
+      universal_adapter: ${{ steps.changes.outputs.universal_adapter }}
+      rbac-controller: ${{ steps.changes.outputs.rbac-controller }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            control-plane:
+              - 'control-plane/**'
+            operator:
+              - 'operator/**'
+            universal-adapter:
+              - 'universal-adapter/**'
+            rbac-controller:
+              - 'rbac-controller/**'
+
+  # Control Plane CI
+  control-plane:
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.control-plane == 'true'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python 3.13
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        working-directory: control-plane
+        run: uv sync --dev --frozen
+
+      - name: Run CI checks
+        working-directory: control-plane
+        run: make ci-check
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./control-plane/coverage.xml
+          flags: control-plane
+          name: control-plane-coverage
+          fail_ci_if_error: false
+
+  # Operator CI
+  operator:
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.operator == 'true'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python 3.13
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        working-directory: operator
+        run: uv sync --dev --frozen
+
+      - name: Run CI checks
+        working-directory: operator
+        run: make ci-check
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./operator/coverage.xml
+          flags: operator
+          name: operator-coverage
+          fail_ci_if_error: false
+
+  # Universal Adapter CI
+  universal-adapter:
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.universal_adapter == 'true'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python 3.13
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        working-directory: universal-adapter
+        run: uv sync --dev --frozen
+
+      - name: Run CI checks
+        working-directory: universal-adapter
+        run: make ci-check
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./universal-adapter/coverage.xml
+          flags: universal-adapter
+          name: universal-adapter-coverage
+          fail_ci_if_error: false
+
+  # RBAC Controller CI
+  rbac-controller:
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rbac-controller == 'true'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python 3.13
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        working-directory: rbac-controller
+        run: uv sync --dev --frozen
+
+      - name: Run CI checks
+        working-directory: rbac-controller
+        run: make ci-check
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./rbac-controller/coverage.xml
+          flags: rbac-controller
+          name: rbac-controller-coverage
+          fail_ci_if_error: false
+
+  # Docker builds
+  docker-control-plane:
+    runs-on: ubuntu-latest
+    needs: [changes, control-plane]
+    if: needs.changes.outputs.control-plane == 'true' && github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Control Plane Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./control-plane
+          push: false
+          load: true
+          tags: nimbletools-control-plane:${{ github.sha }}
+          cache-from: type=gha,scope=control-plane
+          cache-to: type=gha,mode=max,scope=control-plane
+
+      - name: Test Control Plane Docker image
+        run: |
+          docker run --rm -d -p 8080:8080 --name test-control-plane nimbletools-control-plane:${{ github.sha }}
+          sleep 10
+          curl -f http://localhost:8080/health
+          docker stop test-control-plane
+
+  docker-operator:
+    runs-on: ubuntu-latest
+    needs: [changes, operator]
+    if: needs.changes.outputs.operator == 'true' && github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Operator Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./operator
+          push: false
+          load: true
+          tags: nimbletools-operator:${{ github.sha }}
+          cache-from: type=gha,scope=operator
+          cache-to: type=gha,mode=max,scope=operator
+
+      - name: Test Operator Docker image
+        run: |
+          # Verify image was built successfully by inspecting it
+          docker image inspect nimbletools-operator:${{ github.sha }}
+          echo "Operator Docker image built successfully"
+          # Note: Cannot run operator container in CI as it requires Kubernetes configuration
+
+  # Overall status check - this job will be required for PR merge
+  ci-success:
+    runs-on: ubuntu-latest
+    needs:
+      [
+        changes,
+        control-plane,
+        operator,
+        universal-adapter,
+        rbac-controller,
+        docker-control-plane,
+        docker-operator,
+      ]
+    if: always()
+    steps:
+      - name: Check CI success
+        run: |
+          # Control plane checks
+          if [[ "${{ needs.changes.outputs.control-plane }}" == "true" ]]; then
+            if [[ "${{ needs.control-plane.result }}" != "success" ]]; then
+              echo "Control plane CI failed"
+              exit 1
+            fi
+            
+            if [[ "${{ github.event_name }}" == "push" && "${{ needs.docker-control-plane.result }}" != "success" ]]; then
+              echo "Control plane Docker build failed"
+              exit 1
+            fi
+          fi
+
+          # Operator checks
+          if [[ "${{ needs.changes.outputs.operator }}" == "true" ]]; then
+            if [[ "${{ needs.operator.result }}" != "success" ]]; then
+              echo "Operator CI failed"
+              exit 1
+            fi
+            
+            if [[ "${{ github.event_name }}" == "push" && "${{ needs.docker-operator.result }}" != "success" ]]; then
+              echo "Operator Docker build failed"
+              exit 1
+            fi
+          fi
+
+          # Universal adapter checks
+          if [[ "${{ needs.changes.outputs.universal_adapter }}" == "true" ]]; then
+            if [[ "${{ needs.universal-adapter.result }}" != "success" ]]; then
+              echo "Universal adapter CI failed"
+              exit 1
+            fi
+          fi
+
+          # RBAC controller checks
+          if [[ "${{ needs.changes.outputs.rbac-controller }}" == "true" ]]; then
+            if [[ "${{ needs.rbac-controller.result }}" != "success" ]]; then
+              echo "RBAC controller CI failed"
+              exit 1
+            fi
+          fi
+
+          echo "All applicable CI checks passed!"

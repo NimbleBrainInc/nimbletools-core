@@ -1,0 +1,143 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nimbletools-control-plane"
+requires-python = ">=3.13"
+
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "kubernetes>=28.1.0",
+    "PyJWT>=2.8.0",
+    "python-multipart>=0.0.6",
+    "aiohttp>=3.10.0",
+    "PyYAML>=6.0",
+    "jsonschema>=4.0.0",
+]
+dynamic = ["version"]
+
+[dependency-groups]
+dev = [
+    "coverage>=7.10.5",
+    "httpx>=0.28.1",
+    "mypy>=1.17.1",
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+    "pytest-cov>=6.2.1",
+    "ruff>=0.12.10",
+    "types-jsonschema>=4.25.1.20250822",
+    "types-pyyaml>=6.0.12.20250822",
+    "types-requests>=2.32.4.20250809",
+]
+
+
+[tool.hatch.version]
+source = "vcs"
+fallback-version = "0.1.0"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nimbletools_control_plane"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings  
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "UP",   # pyupgrade
+    "ARG",  # flake8-unused-arguments
+    "SIM",  # flake8-simplify
+    "TCH",  # flake8-type-checking
+    "PTH",  # flake8-use-pathlib
+    "ERA",  # eradicate
+    "PL",   # pylint
+    "RUF",  # ruff-specific rules
+]
+ignore = [
+    "E501",   # line too long, handled by formatter
+    "B008",   # do not perform function calls in argument defaults
+    "PLR0913", # too many arguments to function call
+    "PLR2004", # magic value used in comparison
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*" = ["PLR2004", "S101", "ARG", "SIM"]
+"src/**/routes/**.py" = ["ARG001", "B904", "PLC0415"]  # Allow unused FastAPI deps and dynamic imports
+"src/**/middlewares.py" = ["ARG001", "B904", "PLC0415"]  # Allow unused FastAPI deps and dynamic imports
+"src/**/main.py" = ["ARG001", "B904"]  # Allow unused FastAPI deps
+
+[tool.ruff.lint.isort]
+known-first-party = ["nimbletools_control_plane"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true
+pretty = true
+show_column_numbers = true
+show_error_codes = true
+show_error_context = true
+ignore_missing_imports = false
+mypy_path = "src"
+packages = ["nimbletools_control_plane"]
+explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+module = [
+    "kubernetes.*",
+    "uvicorn.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = [
+    "-ra",
+    "--strict-config",
+    "--strict-markers",
+    "--cov=nimbletools_control_plane",
+    "--cov-report=term-missing:skip-covered",
+    "--cov-report=html",
+    "--cov-report=xml",
+    "--cov-fail-under=25",
+]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["nimbletools_control_plane"]
+branch = true
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/site-packages/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+

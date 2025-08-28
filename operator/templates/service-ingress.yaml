@@ -1,0 +1,40 @@
+---
+# Simple MCP-only Ingress for MCP Service
+# Health checks are done via MCP protocol - no separate health endpoint needed
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {server_id}-ingress
+  namespace: "{namespace}"
+  labels:
+    mcp.nimbletools.dev/service-ingress: "true"
+    mcp.nimbletools.dev/workspace_id: "{workspace_id}"
+    mcp.nimbletools.dev/server_id: "{server_id}"
+  annotations:
+    nginx.ingress.kubernetes.io/priority: "1000"  
+    nginx.ingress.kubernetes.io/ssl-redirect: "false" 
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/rewrite-target: /mcp
+    # SSE/Streaming Support for MCP protocol
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600" 
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/upstream-hash-by: "$request_uri"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header Connection "";
+      chunked_transfer_encoding off;
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: {mcp_domain}
+    http:
+      paths:
+      # Only MCP endpoint - health checking done via MCP protocol
+      - path: /{workspace_id}/{server_id}/mcp
+        pathType: Prefix  
+        backend:
+          service:
+            name: {server_id}-service
+            port:
+              number: {service_port}

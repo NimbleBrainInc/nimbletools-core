@@ -1,0 +1,211 @@
+# Default values for nimbletools-core
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+global:
+  domain: nimbletools.dev
+  namespace: nimbletools-system
+  imageRegistry: docker.io
+  imagePullSecrets: []
+
+# Universal Adapter configuration
+universalAdapter:
+  image:
+    repository: nimbletools/universal-adapter
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  
+  # Default resource limits for MCP services
+  resources:
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+
+# MCP Operator configuration
+operator:
+  image:
+    repository: nimbletools/mcp-operator
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  
+  replicas: 1
+  
+  resources:
+    limits:
+      cpu: "1000m"
+      memory: "1Gi"
+    requests:
+      cpu: "200m"
+      memory: "256Mi"
+  
+  # Operator configuration
+  config:
+    logLevel: "info"
+    reconcileInterval: "30s"
+    enableMetrics: true
+    metricsPort: 8080
+
+# Control Plane Server configuration
+controlPlane:
+  enabled: true
+  
+  image:
+    repository: nimbletools/control-plane
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  
+  replicas: 2
+  
+  service:
+    type: ClusterIP
+    port: 8080
+    targetPort: 8080
+  
+  resources:
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+  
+  # Authentication configuration
+  auth:
+    provider: "none"  # Options: "none", "enterprise"
+    # Enterprise JWT settings (only used if provider is "enterprise")
+    jwt:
+      secret: ""
+      issuer: ""
+      algorithm: "HS256"
+  
+  # CORS configuration
+  cors:
+    allowOrigins: ["*"]
+    allowMethods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+    allowHeaders: ["*"]
+
+# RBAC Controller configuration
+rbacController:
+  enabled: true
+  
+  image:
+    repository: nimbletools/rbac-controller
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  
+  replicas: 1
+  
+  resources:
+    limits:
+      cpu: "100m"
+      memory: "128Mi"
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+
+# Ingress configuration
+# Nginx Ingress Controller configuration
+nginxIngress:
+  enabled: true
+  image: registry.k8s.io/ingress-nginx/controller
+  tag: v1.12.0
+  resources:
+    requests:
+      cpu: 100m
+      memory: 90Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  nodeSelector:
+    kubernetes.io/os: linux
+
+# Main ingress configuration
+ingress:
+  enabled: true
+  className: "nginx"  # Use nginx instead of traefik
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"  # Allow HTTP for local development
+  
+  # API management endpoint
+  api:
+    paths:
+      - path: /
+        pathType: Prefix
+  
+  # TLS disabled for local development
+  tls: []
+
+# ServiceAccount configuration
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+# RBAC configuration
+rbac:
+  create: true
+  
+  # Cluster-level permissions for the operator
+  clusterRole:
+    rules:
+      - apiGroups: [""]
+        resources: ["namespaces"]
+        verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]  # Added create/update/patch/delete for API
+      - apiGroups: ["apps"]
+        resources: ["deployments"]
+        verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+      - apiGroups: [""]
+        resources: ["services", "configmaps", "secrets", "events"]  # Added events
+        verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+      - apiGroups: ["networking.k8s.io"]  # Added for ingress management
+        resources: ["ingresses"]
+        verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+      - apiGroups: ["mcp.nimbletools.dev"]
+        resources: ["mcpservices"]
+        verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+      - apiGroups: ["mcp.nimbletools.dev"]
+        resources: ["mcpservices/status"]
+        verbs: ["get", "update", "patch"]
+      - apiGroups: ["apiextensions.k8s.io"]
+        resources: ["customresourcedefinitions"]
+        verbs: ["get", "list", "watch"]
+
+# Monitoring configuration
+monitoring:
+  enabled: true
+
+# Node selector and tolerations
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+# Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# Additional environment variables
+extraEnv: []
+
+# Additional volumes and volume mounts
+extraVolumes: []
+extraVolumeMounts: []

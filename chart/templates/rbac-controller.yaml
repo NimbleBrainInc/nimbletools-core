@@ -1,0 +1,164 @@
+{{- if .Values.rbacController.enabled }}
+---
+# RBAC Controller Service Account
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "nimbletools-core.rbacControllerName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nimbletools-core.rbacControllerLabels" . | nindent 4 }}
+
+---
+# RBAC Controller ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "nimbletools-core.rbacControllerName" . }}-role
+  labels:
+    {{- include "nimbletools-core.rbacControllerLabels" . | nindent 4 }}
+rules:
+# Namespace permissions - minimal for workspace detection
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["get", "list", "watch"]
+
+# RoleBinding permissions - only what's needed to create RoleBindings
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["rolebindings"]
+  verbs: ["create", "get"]
+
+# ClusterRole permissions - bind specific ClusterRole to ServiceAccounts
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["clusterroles"]
+  verbs: ["get", "bind", "escalate"]
+  resourceNames: ["{{ include "nimbletools-core.operatorName" . }}"]
+
+# Kopf framework permissions - required for operation
+- apiGroups: ["zalando.org"]
+  resources: ["kopfpeerings"]
+  verbs: ["list", "watch", "patch", "get", "create", "update", "delete"]
+- apiGroups: ["apiextensions.k8s.io"]
+  resources: ["customresourcedefinitions"]
+  verbs: ["list", "watch"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create"]
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["patch"]  # Required by Kopf for finalizer management
+
+---
+# RBAC Controller ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "nimbletools-core.rbacControllerName" . }}-binding
+  labels:
+    {{- include "nimbletools-core.rbacControllerLabels" . | nindent 4 }}
+subjects:
+- kind: ServiceAccount
+  name: {{ include "nimbletools-core.rbacControllerName" . }}
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: ClusterRole
+  name: {{ include "nimbletools-core.rbacControllerName" . }}-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# RBAC Controller Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nimbletools-core.rbacControllerName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nimbletools-core.rbacControllerLabels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.rbacController.replicas }}
+  selector:
+    matchLabels:
+      {{- include "nimbletools-core.rbacControllerSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "nimbletools-core.rbacControllerSelectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "nimbletools-core.rbacControllerName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: rbac-controller
+        image: {{ if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{ end }}{{ .Values.rbacController.image.repository }}:{{ .Values.rbacController.image.tag }}
+        imagePullPolicy: {{ .Values.rbacController.image.pullPolicy }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        env:
+        - name: KUBERNETES_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        {{- range .Values.extraEnv }}
+        - name: {{ .name }}
+          value: {{ .value | quote }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.rbacController.resources | nindent 10 }}
+        livenessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sys; sys.exit(0)"
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - python
+            - -c
+            - "import sys; sys.exit(0)"
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        {{- range .Values.extraVolumeMounts }}
+        - name: {{ .name }}
+          mountPath: {{ .mountPath }}
+          {{- if .readOnly }}
+          readOnly: {{ .readOnly }}
+          {{- end }}
+        {{- end }}
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      {{- range .Values.extraVolumes }}
+      - name: {{ .name }}
+        {{- if .emptyDir }}
+        emptyDir: {}
+        {{- else if .configMap }}
+        configMap:
+          name: {{ .configMap.name }}
+        {{- else if .secret }}
+        secret:
+          secretName: {{ .secret.secretName }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

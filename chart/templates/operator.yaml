@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nimbletools-core.operatorName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nimbletools-core.operatorLabels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.operator.replicas }}
+  selector:
+    matchLabels:
+      {{- include "nimbletools-core.operatorSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "nimbletools-core.operatorSelectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "nimbletools-core.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: operator
+        image: {{ if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{ end }}{{ .Values.operator.image.repository }}:{{ .Values.operator.image.tag }}
+        imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: LOG_LEVEL
+          value: {{ .Values.operator.config.logLevel }}
+        - name: RECONCILE_INTERVAL
+          value: {{ .Values.operator.config.reconcileInterval }}
+        - name: ENABLE_METRICS
+          value: {{ .Values.operator.config.enableMetrics | quote }}
+        - name: METRICS_PORT
+          value: {{ .Values.operator.config.metricsPort | quote }}
+        - name: UNIVERSAL_ADAPTER_IMAGE
+          value: {{ .Values.global.imageRegistry }}/{{ .Values.universalAdapter.image.repository }}:{{ .Values.universalAdapter.image.tag }}
+        - name: DOMAIN
+          value: {{ .Values.global.domain }}
+        {{- range .Values.extraEnv }}
+        - name: {{ .name }}
+          value: {{ .value | quote }}
+        {{- end }}
+        ports:
+        - name: metrics
+          containerPort: {{ .Values.operator.config.metricsPort }}
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+        resources:
+          {{- toYaml .Values.operator.resources | nindent 10 }}
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        {{- range .Values.extraVolumeMounts }}
+        - name: {{ .name }}
+          mountPath: {{ .mountPath }}
+          {{- if .readOnly }}
+          readOnly: {{ .readOnly }}
+          {{- end }}
+        {{- end }}
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      {{- range .Values.extraVolumes }}
+      - name: {{ .name }}
+        {{- if .emptyDir }}
+        emptyDir: {}
+        {{- else if .configMap }}
+        configMap:
+          name: {{ .configMap.name }}
+        {{- else if .secret }}
+        secret:
+          secretName: {{ .secret.secretName }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+{{- if .Values.monitoring.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nimbletools-core.operatorName" . }}-metrics
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nimbletools-core.operatorLabels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+  - name: metrics
+    port: {{ .Values.operator.config.metricsPort }}
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    {{- include "nimbletools-core.operatorSelectorLabels" . | nindent 4 }}
+{{- end }}

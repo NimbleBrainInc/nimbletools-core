@@ -1,0 +1,114 @@
+[build-system]
+requires = ["setuptools>=61", "setuptools-scm>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nimbletools-rbac-controller"
+version = "0.1.0"
+
+requires-python = ">=3.13"
+dependencies = [
+    "kopf>=1.38.0",
+    "kubernetes>=33.1.0",
+    "ruff>=0.12.10",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+    "mypy",
+    "pylint",
+    "pytest",
+    "pytest-cov",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+
+[tool.ruff.lint.per-file-ignores]
+"src/**/main.py" = ["ARG001"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "ARG", # flake8-unused-arguments
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "SIM103", # Return the condition directly
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["nimbletools_rbac_controller"]
+
+[tool.mypy]
+python_version = "3.13"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = ["kubernetes.*", "kopf.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["nimbletools_rbac_controller.main"]
+disallow_untyped_decorators = false
+
+[tool.pylint]
+max-line-length = 100
+good-names = ["i", "j", "k", "ex", "Run", "_"]
+
+[tool.pylint.messages_control]
+disable = [
+    "missing-docstring",
+    "too-few-public-methods",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "--cov=src --cov-report=term-missing --cov-report=xml"
+
+[tool.coverage.run]
+source = ["src"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.17.1",
+    "pylint>=3.3.8",
+    "pytest>=8.4.1",
+    "pytest-cov>=6.2.1",
+]
+
+[project.entry-points."console_scripts"]
+nimbletools-rbac-controller = "nimbletools_rbac_controller.main:main"
+

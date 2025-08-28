@@ -1,0 +1,27 @@
+{{- if .Values.rbac.create -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "nimbletools-core.fullname" . }}-operator
+  labels:
+    {{- include "nimbletools-core.operatorLabels" . | nindent 4 }}
+rules:
+{{- with .Values.rbac.clusterRole.rules }}
+{{- toYaml . | nindent 2 }}
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "nimbletools-core.fullname" . }}-operator
+  labels:
+    {{- include "nimbletools-core.operatorLabels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "nimbletools-core.fullname" . }}-operator
+subjects:
+- kind: ServiceAccount
+  name: {{ include "nimbletools-core.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+{{- end }}
