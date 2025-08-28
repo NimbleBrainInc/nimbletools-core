@@ -1,0 +1,117 @@
+{{- if .Values.controlPlane.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nimbletools-core.controlPlaneName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nimbletools-core.controlPlaneLabels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.controlPlane.replicas }}
+  selector:
+    matchLabels:
+      {{- include "nimbletools-core.controlPlaneSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "nimbletools-core.controlPlaneSelectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "nimbletools-core.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: control-plane
+        image: {{ if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{ end }}{{ .Values.controlPlane.image.repository }}:{{ .Chart.AppVersion }}
+        imagePullPolicy: {{ .Values.controlPlane.image.pullPolicy }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        env:
+        - name: PORT
+          value: {{ .Values.controlPlane.service.targetPort | quote }}
+        - name: CORS_ALLOW_ORIGINS
+          value: {{ join "," .Values.controlPlane.cors.allowOrigins | quote }}
+        - name: CORS_ALLOW_METHODS
+          value: {{ join "," .Values.controlPlane.cors.allowMethods | quote }}
+        - name: CORS_ALLOW_HEADERS
+          value: {{ join "," .Values.controlPlane.cors.allowHeaders | quote }}
+        - name: DOMAIN
+          value: {{ .Values.global.domain }}
+        {{- range .Values.extraEnv }}
+        - name: {{ .name }}
+          value: {{ .value | quote }}
+        {{- end }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.controlPlane.service.targetPort }}
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+        resources:
+          {{- toYaml .Values.controlPlane.resources | nindent 10 }}
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        {{- range .Values.extraVolumeMounts }}
+        - name: {{ .name }}
+          mountPath: {{ .mountPath }}
+          {{- if .readOnly }}
+          readOnly: {{ .readOnly }}
+          {{- end }}
+        {{- end }}
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      {{- range .Values.extraVolumes }}
+      - name: {{ .name }}
+        {{- if .emptyDir }}
+        emptyDir: {}
+        {{- else if .configMap }}
+        configMap:
+          name: {{ .configMap.name }}
+        {{- else if .secret }}
+        secret:
+          secretName: {{ .secret.secretName }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "nimbletools-core.controlPlaneName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nimbletools-core.controlPlaneLabels" . | nindent 4 }}
+spec:
+  type: {{ .Values.controlPlane.service.type }}
+  ports:
+  - name: http
+    port: {{ .Values.controlPlane.service.port }}
+    targetPort: {{ .Values.controlPlane.service.targetPort }}
+    protocol: TCP
+  selector:
+    {{- include "nimbletools-core.controlPlaneSelectorLabels" . | nindent 4 }}
+{{- end }}

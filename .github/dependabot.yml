@@ -1,0 +1,48 @@
+version: 2
+updates:
+  # Control Plane Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/control-plane"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "nimbletools-team"
+    labels:
+      - "dependencies"
+      - "control-plane"
+    commit-message:
+      prefix: "deps(control-plane)"
+      include: "scope"
+
+  # Operator Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/operator"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "nimbletools-team"
+    labels:
+      - "dependencies"
+      - "operator"
+    commit-message:
+      prefix: "deps(operator)"
+      include: "scope"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "nimbletools-team"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "deps(actions)"
+      include: "scope"

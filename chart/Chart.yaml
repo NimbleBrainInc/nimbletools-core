@@ -1,0 +1,18 @@
+apiVersion: v2
+name: nimbletools-core
+description: Open-source MCP service runtime for Kubernetes
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://www.nimbletools.ai
+sources:
+  - https://github.com/nimblebrain/nimbletools-core
+maintainers:
+  - name: NimbleBrain Team
+    email: support@nimblebrain.ai
+keywords:
+  - mcp
+  - model-context-protocol
+  - ai
+  - kubernetes
+  - serverless
+type: application

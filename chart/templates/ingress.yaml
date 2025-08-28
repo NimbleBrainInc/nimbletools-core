@@ -1,0 +1,55 @@
+{{- if and .Values.controlPlane.enabled .Values.ingress.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "nimbletools-core.fullname" . }}-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "nimbletools-core.labels" . | nindent 4 }}
+  annotations:
+    # Very low priority for catch-all rule - workspace ingresses override this
+    nginx.ingress.kubernetes.io/priority: "100"
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    {{- range .Values.ingress.tls }}
+    - hosts:
+        {{- range .hosts }}
+        - {{ . | quote }}
+        {{- end }}
+      secretName: {{ .secretName }}
+    {{- end }}
+  {{- end }}
+  rules:
+    # API management endpoint - routes to API service
+    - host: api.{{ .Values.global.domain }}
+      http:
+        paths:
+          {{- range .Values.ingress.api.paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "nimbletools-core.controlPlaneName" $ }}
+                port:
+                  number: {{ $.Values.controlPlane.service.port }}
+          {{- end }}
+    # MCP host establishment - dummy route to establish host for nginx
+    # Workspace ingresses will override this for actual MCP paths
+    - host: mcp.{{ .Values.global.domain }}
+      http:
+        paths:
+          - path: /_healthz
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "nimbletools-core.controlPlaneName" $ }}
+                port:
+                  number: {{ $.Values.controlPlane.service.port }}
+{{- end }}
