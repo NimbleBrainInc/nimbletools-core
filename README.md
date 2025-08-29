@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/nimblebraininc-nimbletools-core-badge.png)](https://mseep.ai/app/nimblebraininc-nimbletools-core)
+
 # NimbleTools Core
 
 ![GitHub Release](https://img.shields.io/github/v/release/NimbleBrainInc/nimbletools-core)
