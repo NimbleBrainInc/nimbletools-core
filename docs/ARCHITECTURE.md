@@ -11,9 +11,9 @@ Understand how NimbleTools Core transforms any MCP tool into a production-ready,
 
 **Design principles:**
 - **Universal compatibility:** stdio or HTTP, any language, any complexity
-- **Zero-configuration scaling:** From 0 to N replicas automatically  
+- **Zero-configuration scaling:** From 0 to N replicas automatically
 - **Production-ready defaults:** Security, monitoring, and reliability built-in
-- **Developer-friendly:** Deploy with a single YAML file
+- **Developer-friendly:** Deploy with a single command using server definitions
 
 ## System Overview
 
@@ -69,14 +69,12 @@ Understand how NimbleTools Core transforms any MCP tool into a production-ready,
 - **Health Management:** Continuous monitoring with automatic recovery
 
 **How it works:**
-```python
-# You declare what you want:
-apiVersion: mcp.nimbletools.dev/v1
-kind: MCPService
-spec:
-  replicas: 0  # Start with serverless
+```bash
+# You deploy a server using ntcli or server.json:
+ntcli srv deploy ai.nimbletools/echo
 
 # Operator handles everything:
+# • Reads server definition from registry
 # • Creates Kubernetes Deployment
 # • Sets up Service endpoints
 # • Configures health checks
@@ -85,9 +83,9 @@ spec:
 
 **Operator workflow:**
 ```
-kubectl apply → Operator Watches → Resource Creation → Health Monitoring
-      ↓              ↓                    ↓                 ↓
- MCPService → Deployment + Service → Running Pod → Scaling Decisions
+ntcli deploy → Control Plane → Operator Watches → Resource Creation → Health Monitoring
+      ↓              ↓              ↓                    ↓                 ↓
+ Server Name → MCPService CRD → Deployment + Service → Running Pod → Scaling Decisions
 ```
 
 ### 🔌 Universal Adapter: The Compatibility Layer
@@ -142,49 +140,60 @@ Enterprise → JWT-based authentication with RBAC
 - `GET /health` - System health check
 - `GET /docs` - Interactive API documentation
 
-### 📋 MCPService Resource: Your Service Declaration
+### 📋 Server Definition: Your Service Declaration
 
-**What it is:** A Kubernetes-native way to declare "I want this MCP tool running as a service."
+**What it is:** A standardized JSON schema that describes your MCP server, its capabilities, and deployment requirements.
 
-**Why it matters:** Declarative configuration means you describe the outcome, and the system figures out how to achieve it.
+**Why it matters:** Declarative configuration means you describe what you want, and the system figures out how to deploy it.
 
-**Basic structure:**
-```yaml
-apiVersion: mcp.nimbletools.dev/v1
-kind: MCPService
-metadata:
-  name: my-service
-spec:
-  # What to run
-  container:
-    image: your-org/mcp-tool:latest
-    port: 8000
-  
-  # How to run it
-  deployment:
-    type: http  # or "stdio" for command-line tools
-  
-  # Scaling behavior  
-  replicas: 0  # Serverless: scale from 0 based on demand
-  
-  # Tool metadata
-  tools:
-    - name: "analyze"
-      description: "Analyze data patterns"
+**Basic structure (`server.json`):**
+```json
+{
+  "$schema": "https://registry.nimbletools.ai/schemas/2025-09-22/nimbletools-server.schema.json",
+  "name": "ai.nimbletools/my-service",
+  "version": "1.0.0",
+  "description": "My MCP service",
+  "status": "active",
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "your-org/mcp-tool",
+      "version": "1.0.0",
+      "transport": {
+        "type": "streamable-http"
+      }
+    }
+  ],
+  "_meta": {
+    "ai.nimbletools.mcp/v1": {
+      "deployment": {
+        "protocol": "http",
+        "port": 8000
+      },
+      "resources": {
+        "limits": {
+          "memory": "256Mi",
+          "cpu": "100m"
+        }
+      },
+      "capabilities": {
+        "tools": true
+      }
+    }
+  }
+}
 ```
 
-**Automatic status tracking:**
-```yaml
-status:
-  phase: Running        # Pending → Running → Scaling
-  readyReplicas: 3      # How many are actually working
-  conditions:
-    - type: Ready
-      status: "True"
-      lastTransitionTime: "2024-01-15T10:30:00Z"
+**Deployment:**
+```bash
+# Deploy from registry
+ntcli srv deploy ai.nimbletools/my-service
+
+# Or deploy from local definition
+ntcli srv deploy ./server.json
 ```
 
-**What you get:** Real-time visibility into service health without manual monitoring.
+**What you get:** Real-time visibility into service health through `ntcli srv info` and `ntcli srv list`.
 
 ### 🗂️ MCP Registry: Service Discovery Layer
 
@@ -192,34 +201,37 @@ status:
 
 **Our solution:** Centralized service registries with tested, documented, ready-to-deploy MCP services.
 
-**Registry Architecture:**
-```yaml
-# registry.yaml format
-name: "community-registry"
-version: "1.0.0"
-servers:
-  - name: "web-scraper"
-    status: "active"
-    meta:
-      description: "Extract content from web pages"
-      category: "data-extraction"
-      tags: ["web", "scraping", "content"]
-    container:
-      image: "nimbletools/web-scraper:v1.2.0"
-      port: 8000
-    deployment:
-      type: "http"
-    tools:
-      - name: "scrape_url"
-        description: "Extract content from a URL"
+**Registry Structure:**
+
+Each server in the registry has a `server.json` file following the standard schema:
+
+```json
+{
+  "$schema": "https://registry.nimbletools.ai/schemas/2025-09-22/nimbletools-server.schema.json",
+  "name": "ai.nimbletools/web-scraper",
+  "version": "1.2.0",
+  "description": "Extract content from web pages",
+  "status": "active",
+  "packages": [...],
+  "_meta": {
+    "ai.nimbletools.mcp/v1": {
+      "display": {
+        "category": "data-extraction",
+        "tags": ["web", "scraping", "content"]
+      },
+      "capabilities": {
+        "tools": true
+      }
+    }
+  }
+}
 ```
 
 **How it works:**
-1. **Registry Creation:** Fork the [registry template](https://github.com/NimbleBrainInc/nimbletools-mcp-registry)
-2. **Service Addition:** Add your services following the schema
+1. **Registry Creation:** Host server.json files in a structured directory
+2. **Service Addition:** Add new server.json files following the schema
 3. **Distribution:** Host on GitHub Pages, S3, or any web server
-4. **Registration:** `register-community-registry.sh --registry-url YOUR_URL`
-5. **Discovery:** Services appear in API and can be deployed instantly
+4. **Discovery:** Services appear via `ntcli srv search` and can be deployed instantly
 
 **Registry benefits:**
 - **Quality Assurance:** All services tested and documented
@@ -260,13 +272,14 @@ ntcli server status analytics-engine --workspace production
 ```
 
 **CI/CD Integration:**
-```yaml
+```bash
 # GitHub Actions example
 - name: Deploy MCP Service
   run: |
     ntcli config set endpoint ${{ secrets.NIMBLETOOLS_ENDPOINT }}
     ntcli config set auth-token ${{ secrets.NIMBLETOOLS_TOKEN }}
-    ntcli server deploy ${{ matrix.service }} --workspace production
+    ntcli ws use production
+    ntcli srv deploy ${{ matrix.service }}
 ```
 
 **Implementation:** [ntcli GitHub Repository](https://github.com/NimbleBrainInc/ntcli) | [Documentation](https://docs.nimblebrain.ai/ntcli)
@@ -276,14 +289,25 @@ ntcli server status analytics-engine --workspace production
 ### 🌐 HTTP-Native Services
 **For services built with HTTP APIs from the start**
 
-```yaml
-# Your service already speaks HTTP
-spec:
-  deployment:
-    type: http
-  container:
-    image: your-org/web-scraper-mcp:latest
-    port: 8000
+```json
+{
+  "name": "ai.nimbletools/web-scraper",
+  "packages": [{
+    "registryType": "oci",
+    "identifier": "your-org/web-scraper-mcp",
+    "transport": {
+      "type": "streamable-http"
+    }
+  }],
+  "_meta": {
+    "ai.nimbletools.mcp/v1": {
+      "deployment": {
+        "protocol": "http",
+        "port": 8000
+      }
+    }
+  }
+}
 ```
 
 **What happens:**
@@ -294,13 +318,25 @@ spec:
 ### 💻 Command-Line Tools
 **For existing stdio-based MCP tools**
 
-```yaml
-# Your existing CLI tool
-spec:
-  deployment:
-    type: stdio
-    executable: "/usr/local/bin/data-analyzer"
-    args: ["--server", "--config=/etc/config.json"]
+Server definitions specify stdio configuration in the `_meta` section, which the Universal Adapter uses to wrap the CLI tool:
+
+```json
+{
+  "name": "ai.nimbletools/data-analyzer",
+  "packages": [{
+    "registryType": "oci",
+    "identifier": "nimbletools/universal-adapter"
+  }],
+  "_meta": {
+    "ai.nimbletools.mcp/v1": {
+      "deployment": {
+        "protocol": "stdio",
+        "command": "/usr/local/bin/data-analyzer",
+        "args": ["--server", "--config=/etc/config.json"]
+      }
+    }
+  }
+}
 ```
 
 **What happens:**
@@ -332,9 +368,19 @@ spec:
 ### ⚡ Serverless Mode (Scale-to-Zero)
 **Pay nothing when not in use, instant scaling when needed**
 
-```yaml
-spec:
-  replicas: 0  # Start with zero instances
+Scaling behavior is configured in the server definition's `_meta` section:
+
+```json
+{
+  "_meta": {
+    "ai.nimbletools.mcp/v1": {
+      "scaling": {
+        "minReplicas": 0,
+        "maxReplicas": 10
+      }
+    }
+  }
+}
 ```
 
 **How it works:**
@@ -374,15 +420,14 @@ spec:
 - Workspace-level isolation
 - Audit logging for compliance
 
-**Example security configuration:**
-```yaml
-# Automatic security defaults
-securityContext:
-  runAsNonRoot: true          # Never run as root
-  readOnlyRootFilesystem: true # Prevent file tampering
-  capabilities:
-    drop: ["ALL"]             # Remove all privileges
-```
+**Security defaults:**
+
+Security settings are automatically applied by the operator based on best practices:
+- **runAsNonRoot:** Never run containers as root
+- **readOnlyRootFilesystem:** Prevent file tampering
+- **Drop all capabilities:** Remove all Linux capabilities
+
+These are configured in the operator, not in individual server definitions.
 
 ## Built-in Observability
 
@@ -440,42 +485,42 @@ class CustomAuthProvider:
 ```
 
 **Custom Scaling Policies:**
-```yaml
-spec:
-  scaling:
-    policy: custom
-    triggers:
-      - type: queue-depth
-        threshold: 10
-      - type: response-time
-        threshold: 500ms
+
+Advanced scaling can be configured in server definitions:
+
+```json
+{
+  "_meta": {
+    "ai.nimbletools.mcp/v1": {
+      "scaling": {
+        "minReplicas": 2,
+        "maxReplicas": 50,
+        "targetCPUUtilizationPercentage": 70
+      }
+    }
+  }
+}
 ```
 
-**Webhook Integration:**
-```yaml
-# Validate services before deployment
-webhook:
-  validation:
-    url: https://your-validator.com/validate
-    rules:
-      - operations: ["CREATE", "UPDATE"]
-        resources: ["mcpservices"]
-```
+**Validation Hooks:**
+
+The control plane supports validation webhooks for custom deployment policies (configured at the platform level, not per-server).
 
 **Why this matters:** Adapt the platform to your organization's needs without forking the codebase.
 
 ## How Everything Works Together
 
 ### 🚀 Service Deployment Journey
-**From `kubectl apply` to running service**
+**From `ntcli deploy` to running service**
 
 ```
-1. You: kubectl apply -f my-service.yaml
-2. Kubernetes: Validates and stores MCPService
-3. Operator: Detects new service, creates Deployment + Service
-4. Kubernetes: Schedules pod, pulls image, starts container
-5. Service: Health checks pass, ready to receive traffic
-6. You: Service available at http://service-name:8000
+1. You: ntcli srv deploy ai.nimbletools/echo
+2. ntcli: Fetches server.json from registry
+3. Control Plane: Creates MCPService CRD from server definition
+4. Operator: Detects new MCPService, creates Deployment + Service
+5. Kubernetes: Schedules pod, pulls image, starts container
+6. Service: Health checks pass, ready to receive traffic
+7. You: Service visible in `ntcli srv list`
 ```
 
 ### ⚡ Request Processing Flow
@@ -527,17 +572,17 @@ New request arrives → Operator scales to 1 → Pod starts → Service ready
 ### 🔐 Secrets Management
 **Keep sensitive data secure**
 
-```yaml
-# Database credentials via Kubernetes Secret
-spec:
-  container:
-    env:
-      - name: DB_PASSWORD
-        valueFrom:
-          secretKeyRef:
-            name: db-credentials
-            key: password
+Secrets are managed through the control plane API and workspace secrets:
+
+```bash
+# Set a secret for your workspace
+ntcli ws secret set DB_PASSWORD "your-password"
+
+# Secrets are automatically injected as environment variables
+# when servers are deployed
 ```
+
+Server definitions can declare required secrets in their metadata.
 
 ## Production Reliability
 
@@ -558,12 +603,16 @@ spec:
 **Simple backup and restore**
 
 ```bash
-# Backup: Export all your service definitions
-kubectl get mcpservices -A -o yaml > my-services-backup.yaml
+# Backup: List all deployed servers
+ntcli srv list --all-workspaces > deployed-servers.txt
 
-# Restore: Apply to new cluster
-kubectl apply -f my-services-backup.yaml
+# Restore: Redeploy servers from registry
+cat deployed-servers.txt | while read server; do
+  ntcli srv deploy "$server"
+done
 ```
+
+Server definitions in the registry serve as the source of truth for disaster recovery.
 
 ## Performance at Scale
 
@@ -577,17 +626,34 @@ kubectl apply -f my-services-backup.yaml
 - **Automatic cleanup:** Unused resources garbage collected
 
 **Scaling strategies:**
-```yaml
-# Development: Fixed small resources
-resources:
-  requests: {cpu: 100m, memory: 128Mi}
-  limits: {cpu: 200m, memory: 256Mi}
 
-# Production: Auto-scaling based on usage
-horizontalPodAutoscaler:
-  minReplicas: 2
-  maxReplicas: 50
-  targetCPUUtilizationPercentage: 70
+Development servers use fixed small resources:
+```json
+{
+  "_meta": {
+    "ai.nimbletools.mcp/v1": {
+      "resources": {
+        "requests": {"cpu": "100m", "memory": "128Mi"},
+        "limits": {"cpu": "200m", "memory": "256Mi"}
+      }
+    }
+  }
+}
+```
+
+Production servers enable auto-scaling:
+```json
+{
+  "_meta": {
+    "ai.nimbletools.mcp/v1": {
+      "scaling": {
+        "minReplicas": 2,
+        "maxReplicas": 50,
+        "targetCPUUtilizationPercentage": 70
+      }
+    }
+  }
+}
 ```
 
 ### 🚀 Network Performance

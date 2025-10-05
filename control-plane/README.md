@@ -1,17 +1,36 @@
-# NimbleTools Core API
+# NimbleTools Control Plane API
 
-The NimbleTools Core API is a FastAPI-based REST API that provides management capabilities for MCP services and workspaces. It features a pluggable authentication system that supports both open-source (no-auth) and enterprise (JWT) authentication modes.
+The NimbleTools Control Plane API is a FastAPI-based REST API that provides management capabilities for MCP services and workspaces. It features a pluggable authentication system with multi-tenant organization support.
 
 ## Features
 
-- **Workspace Management**: Create, list, get, and delete isolated workspaces
-- **Server Management**: Deploy, scale, update, and monitor MCP services within workspaces
-- **Registry Management**: Enable external MCP registries and deploy multiple services at once
-- **Multi-tenant Isolation**: Owner-based resource isolation and access control
-- **Pluggable Authentication**: Switch between no-auth (OSS) and JWT-based (enterprise) authentication
+- **Workspace Management**: Create, list, get, and delete isolated workspaces with organization-based multi-tenancy
+- **Server Management**: Deploy, scale, and monitor MCP services within workspaces
+- **Secret Management**: Manage workspace-specific secrets for MCP services
+- **Multi-tenant Isolation**: Organization-based resource isolation and access control
+- **Pluggable Authentication**: Duck-typed provider system for flexible authentication
+- **Authentication**: Provides /auth endpoint for nginx-ingress validation
 - **Kubernetes Integration**: Direct integration with Kubernetes APIs for resource management
+- **API Versioning**: All endpoints support versioned request/response models
 - **OpenAPI Documentation**: Auto-generated API documentation available at `/docs`
 - **Health Checks**: Built-in health endpoints for monitoring
+
+## Authentication
+
+The control plane uses a pluggable provider system for authentication and authorization. All workspaces are isolated by organization with automatic filtering and access control.
+
+**See [provider-system.md](../docs/provider-system.md) for complete provider configuration details.**
+
+Quick start with community provider (no authentication):
+
+```yaml
+# community-provider.yaml
+class: "nimbletools_control_plane.providers.community.CommunityProvider"
+```
+
+```bash
+export PROVIDER_CONFIG=/path/to/community-provider.yaml
+```
 
 ## API Endpoints
 
@@ -21,63 +40,39 @@ The NimbleTools Core API is a FastAPI-based REST API that provides management ca
 - `GET /health`: Health check endpoint
 - `GET /docs`: Interactive API documentation (Swagger UI)
 - `GET /redoc`: Alternative API documentation (ReDoc)
+- `GET /openapi.json`: OpenAPI specification in JSON format
 
 ### Workspace Management
 
 - `POST /v1/workspaces`: Create a new workspace
-- `GET /v1/workspaces`: List all workspaces (filtered by user in enterprise mode)
+- `GET /v1/workspaces`: List all workspaces (filtered by organization)
 - `GET /v1/workspaces/{workspace_id}`: Get workspace details
 - `DELETE /v1/workspaces/{workspace_id}`: Delete workspace and all resources
+
+### Workspace Secrets
+
+- `GET /v1/workspaces/{workspace_id}/secrets`: List workspace secrets
+- `PUT /v1/workspaces/{workspace_id}/secrets/{secret_key}`: Set workspace secret
+- `DELETE /v1/workspaces/{workspace_id}/secrets/{secret_key}`: Delete workspace secret
 
 ### Server Management
 
 - `GET /v1/workspaces/{workspace_id}/servers`: List servers in workspace
 - `POST /v1/workspaces/{workspace_id}/servers`: Deploy new server to workspace
-- `GET /v1/workspaces/{workspace_id}/servers/{server_name}`: Get server details
-- `PATCH /v1/workspaces/{workspace_id}/servers/{server_name}`: Update server (scaling, etc.)
-- `DELETE /v1/workspaces/{workspace_id}/servers/{server_name}`: Delete server
-- `GET /v1/workspaces/{workspace_id}/servers/{server_name}/logs`: Get server logs
-- `POST /v1/workspaces/{workspace_id}/servers/{server_name}/restart`: Restart server
+- `GET /v1/workspaces/{workspace_id}/servers/{server_id}`: Get server details
+- `POST /v1/workspaces/{workspace_id}/servers/{server_id}/scale`: Scale server replicas
+- `DELETE /v1/workspaces/{workspace_id}/servers/{server_id}`: Delete server
 
-### Registry Management
+## API Versioning
 
-- `POST /v1/registry`: Enable registry from URL and deploy services
-- `GET /v1/registry`: List all registries owned by authenticated user
-- `GET /v1/registry/servers`: List all servers across user's registries
-- `GET /v1/registry/servers/{server_id}`: Get detailed server information
-- `GET /v1/registry/info?registry_url={url}`: Get registry information without deploying
+All request and response models include a `version` field for API compatibility:
 
-## Authentication System
-
-The API uses a pluggable authentication system that can be configured via environment variables.
-
-### No-Auth Provider (OSS Default)
-
-For open-source use, no authentication is required:
-
-```bash
-export AUTH_PROVIDER=none
+```json
+{
+  "version": "v1",
+  "name": "my-workspace"
+}
 ```
-
-All requests are treated as coming from an anonymous admin user with full access to all resources.
-
-### Enterprise JWT Provider
-
-For enterprise deployments with user authentication:
-
-```bash
-export AUTH_PROVIDER=enterprise
-export JWT_SECRET=your-secret-key
-export JWT_ISSUER=your-issuer
-```
-
-Requires `Authorization: Bearer <token>` header with valid JWT tokens.
-
-JWT token should contain:
-
-- `sub`: User ID
-- `role`: User role (`admin` or `user`)
-- `iss`: Token issuer (must match `JWT_ISSUER`)
 
 ## Usage Examples
 
@@ -86,18 +81,24 @@ JWT token should contain:
 ```bash
 curl -X POST http://localhost:8080/v1/workspaces \
   -H "Content-Type: application/json" \
-  -d '{"name": "my-workspace"}'
+  -d '{
+    "version": "v1",
+    "name": "my-workspace"
+  }'
 ```
 
 Response:
 
 ```json
 {
-  "workspace_id": "123e4567-e89b-12d3-a456-426614174000",
-  "name": "my-workspace",
-  "namespace": "ws-123e4567-e89b-12d3-a456-426614174000",
-  "owner": "anonymous",
-  "status": "created"
+  "version": "v1",
+  "workspace_id": "550e8400-e29b-41d4-a716-446655440000",
+  "workspace_name": "my-workspace-550e8400-e29b-41d4-a716-446655440000",
+  "namespace": "ws-my-workspace-550e8400-e29b-41d4-a716-446655440000",
+  "user_id": "123e4567-e89b-12d3-a456-426614174000",
+  "organization_id": "987fcdeb-51a2-43d1-9876-543210fedcba",
+  "status": "active",
+  "created_at": "2025-01-15T10:30:00Z"
 }
 ```
 
@@ -107,6 +108,7 @@ Response:
 curl -X POST http://localhost:8080/v1/workspaces/{workspace_id}/servers \
   -H "Content-Type: application/json" \
   -d '{
+    "version": "v1",
     "name": "calculator",
     "spec": {
       "description": "Simple calculator MCP service",
@@ -129,86 +131,80 @@ curl -X POST http://localhost:8080/v1/workspaces/{workspace_id}/servers \
 ### Scale a Service
 
 ```bash
-curl -X PATCH http://localhost:8080/v1/workspaces/{workspace_id}/servers/calculator \
-  -H "Content-Type: application/json" \
-  -d '{"replicas": 3}'
-```
-
-### Get Server Logs
-
-```bash
-curl http://localhost:8080/v1/workspaces/{workspace_id}/servers/calculator/logs?lines=50
-```
-
-### Enable a Registry
-
-```bash
-curl -X POST http://localhost:8080/v1/registry \
+curl -X POST http://localhost:8080/v1/workspaces/{workspace_id}/servers/{server_id}/scale \
   -H "Content-Type: application/json" \
   -d '{
-    "registry_url": "https://raw.githubusercontent.com/NimbleBrainInc/nimbletools-mcp-registry/main/registry.yaml"
+    "version": "v1",
+    "replicas": 3
   }'
 ```
 
-Response:
-
-```json
-{
-  "registry_name": "community-servers",
-  "registry_version": "2.0.0",
-  "namespace": "registry-community-servers",
-  "services_created": 6,
-  "services": ["echo", "finnhub", "nationalparks-mcp", "ref-tools-mcp", "reverse-text", "tavily-mcp"],
-  "timestamp": "2025-08-25T22:30:00Z"
-}
-```
-
-### List Registry Servers
+### Manage Workspace Secrets
 
 ```bash
-curl http://localhost:8080/v1/registry/servers
-```
+# List secrets
+curl http://localhost:8080/v1/workspaces/{workspace_id}/secrets
 
-Response:
+# Set a secret
+curl -X PUT http://localhost:8080/v1/workspaces/{workspace_id}/secrets/API_KEY \
+  -H "Content-Type: application/json" \
+  -d '{
+    "version": "v1",
+    "value": "secret-value-123"
+  }'
 
-```json
-{
-  "servers": [
-    {
-      "id": "echo",
-      "name": "Echo MCP Server",
-      "registry": "community-servers",
-      "namespace": "registry-community-servers",
-      "status": "running",
-      "tools": [...],
-      "replicas": {"desired": 1, "current": 1, "ready": 1}
-    }
-  ],
-  "total": 6,
-  "registries": [
-    {"name": "community-servers", "server_count": 6}
-  ],
-  "owner": "user123"
-}
+# Delete a secret
+curl -X DELETE http://localhost:8080/v1/workspaces/{workspace_id}/secrets/API_KEY
 ```
 
 ## Development
 
+### Prerequisites
+
+- Python 3.13+
+- uv (for package management)
+- Kubernetes cluster or Docker Desktop with Kubernetes enabled
+
 ### Local Development
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Clone the repository
+git clone https://github.com/nimbletools/nimbletools-core
+cd nimbletools-core/control-plane
+
+# Install dependencies using uv
+uv sync
+
+# Create provider configuration
+cat > community-provider.yaml <<EOF
+class: "nimbletools_control_plane.providers.community.CommunityProvider"
+EOF
 
 # Set environment variables
-export AUTH_PROVIDER=none
+export PROVIDER_CONFIG=./community-provider.yaml
 export PORT=8080
 
 # Run the API server
-python main.py
+uv run python -m nimbletools_control_plane.main
 ```
 
 The API will be available at `http://localhost:8080` with documentation at `http://localhost:8080/docs`.
+
+### Running Tests
+
+```bash
+# Run all tests
+uv run pytest
+
+# Run with coverage
+uv run pytest --cov
+
+# Run linting
+uv run ruff check .
+
+# Run type checking
+uv run mypy src/
+```
 
 ### Docker Development
 
@@ -216,54 +212,57 @@ The API will be available at `http://localhost:8080` with documentation at `http
 # Build the image
 docker build -t nimbletools/control-plane .
 
-# Run with no auth
+# Run with community provider (no auth)
 docker run -p 8080:8080 \
-  -e AUTH_PROVIDER=none \
-  nimbletools/control-plane
-
-# Run with enterprise auth
-docker run -p 8080:8080 \
-  -e AUTH_PROVIDER=enterprise \
-  -e JWT_SECRET=your-secret \
-  -e JWT_ISSUER=your-issuer \
+  -v ./community-provider.yaml:/app/provider-config.yaml \
+  -e PROVIDER_CONFIG=/app/provider-config.yaml \
   nimbletools/control-plane
 ```
 
 ## Architecture Notes
 
-### Pluggable Authentication
-
-The authentication system is designed to be easily extensible:
-
-1. **AuthProvider Interface**: Abstract base class defining authentication methods
-2. **NoAuthProvider**: OSS implementation allowing unrestricted access
-3. **EnterpriseAuthProvider**: JWT-based implementation for user authentication
-4. **Factory Pattern**: `create_auth_provider()` creates the appropriate provider based on environment
-
 ### Kubernetes Integration
 
 The API directly uses the Kubernetes Python client to:
 
-- Create and manage namespaces for workspaces and registries
+- Create and manage namespaces for workspaces (format: `ws-{name}-{uuid}`)
 - Create, read, update, and delete MCPService custom resources
-- Monitor deployment status and retrieve logs
+- Monitor deployment status
 - Handle resource cleanup on deletion
-- Owner-based isolation using Kubernetes labels and selectors
+- Organization-based isolation using Kubernetes labels
+
+Required Kubernetes labels on workspace namespaces:
+
+- `mcp.nimbletools.dev/workspace_id`: Workspace UUID
+- `mcp.nimbletools.dev/workspace_name`: Full workspace name
+- `mcp.nimbletools.dev/user_id`: Owner's UUID
+- `mcp.nimbletools.dev/organization_id`: Organization UUID
 
 ### Error Handling
 
+- **401 Unauthorized**: Missing or invalid authentication
+- **403 Forbidden**: User doesn't have access to resource
 - **404 Not Found**: Resource doesn't exist
-- **401 Unauthorized**: Authentication required (enterprise mode)
-- **403 Forbidden**: User doesn't have access to workspace
 - **409 Conflict**: Resource already exists
+- **422 Unprocessable Entity**: Invalid request data
 - **500 Internal Server Error**: Server-side errors with details
 
 ### Security Considerations
 
 - **CORS**: Configured for development (allow all origins) - should be restricted in production
-- **Input Validation**: FastAPI provides automatic input validation based on type hints
-- **Resource Isolation**: Resources are isolated by Kubernetes namespaces and owner labels
-- **Multi-tenancy**: Users can only access their own workspaces and registries
+- **Input Validation**: FastAPI provides automatic input validation via Pydantic models
+- **Resource Isolation**: Resources isolated by Kubernetes namespaces and organization labels
+- **Multi-tenancy**: Automatic organization-based filtering for all operations
+- **UUID Requirements**: All entity IDs must be valid UUIDs (not strings)
 - **Least Privilege**: API only has necessary Kubernetes RBAC permissions
+- **No Silent Defaults**: Provider configuration is required - fails explicitly if missing
 
-This API provides a clean REST interface for managing MCP services while maintaining compatibility with both open-source and enterprise deployment scenarios.
+## Documentation
+
+- **[Provider System](../docs/provider-system.md)**: Authentication and authorization configuration
+- **[Server Logs](../docs/server-logs.md)**: Accessing and streaming MCP server logs
+
+## Related Services
+
+- **mcp-runtime**: Handles MCP protocol connections and routing to workspace servers
+- **nginx-ingress**: Routes requests based on workspace and server IDs

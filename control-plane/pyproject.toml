@@ -10,7 +10,7 @@ dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "kubernetes>=28.1.0",
-    "PyJWT>=2.8.0",
+    "pyjwt>=2.8.0",
     "python-multipart>=0.0.6",
     "aiohttp>=3.10.0",
     "PyYAML>=6.0",
@@ -73,7 +73,7 @@ ignore = [
 "tests/**/*" = ["PLR2004", "S101", "ARG", "SIM"]
 "src/**/routes/**.py" = ["ARG001", "B904", "PLC0415"]  # Allow unused FastAPI deps and dynamic imports
 "src/**/middlewares.py" = ["ARG001", "B904", "PLC0415"]  # Allow unused FastAPI deps and dynamic imports
-"src/**/main.py" = ["ARG001", "B904"]  # Allow unused FastAPI deps
+"src/**/main.py" = ["ARG001", "B904", "F401", "PLC0415"]  # Allow unused FastAPI deps and dynamic imports
 
 [tool.ruff.lint.isort]
 known-first-party = ["nimbletools_control_plane"]

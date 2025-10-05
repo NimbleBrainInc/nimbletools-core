@@ -1,6 +1,7 @@
 """Test configuration and fixtures."""
 
-from unittest.mock import Mock, patch
+from typing import Any
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -26,13 +27,38 @@ def mock_k8s_config():
 
 @pytest.fixture
 def mock_auth_provider():
-    """Mock authentication provider."""
-    mock_provider = Mock()
-    mock_provider.authenticate.return_value = {
-        "user_id": "test-user",
-        "email": "test@example.com",
-        "role": "admin",
-    }
+    """Mock authentication provider using new auth system."""
 
-    with patch("nimbletools_control_plane.main.create_auth_provider", return_value=mock_provider):
+    # Create a mock auth provider that implements the new protocol
+    class MockAuthProvider:
+        async def validate_token(self, token: str) -> dict[str, Any] | None:
+            return {
+                "user_id": "550e8400-e29b-41d4-a716-446655440000",  # Valid UUID
+                "organization_id": "123e4567-e89b-12d3-a456-426614174000",  # Valid UUID for org
+                "email": "test@example.com",
+                "role": "admin",
+            }
+
+        async def check_workspace_access(self, user: dict[str, Any], workspace_id: str) -> bool:
+            return True
+
+        async def check_permission(self, user: dict[str, Any], resource: str, action: str) -> bool:
+            return True
+
+        async def create_workspace_token(self, workspace_id: str, user: dict[str, Any]) -> str:
+            return f"test_token_{workspace_id}"
+
+        async def validate_mcp_token(self, token: str, workspace_id: str) -> bool:
+            return True
+
+        async def initialize(self) -> None:
+            pass
+
+        async def shutdown(self) -> None:
+            pass
+
+    mock_provider = MockAuthProvider()
+
+    # Patch the provider module to use our mock
+    with patch("nimbletools_control_plane.provider._provider", mock_provider):
         yield mock_provider

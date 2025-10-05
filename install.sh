@@ -12,6 +12,7 @@ CHART_NAME="nimbletools-core"
 RELEASE_NAME="nimbletools-core"
 NAMESPACE="nimbletools-system"
 TIMEOUT="300s"
+K3D_CLUSTER_NAME="nimbletools-quickstart"
 
 # Colors for output
 RED='\033[0;31m'
@@ -52,9 +53,9 @@ OPTIONS:
     --api-enabled               Enable API server (default: true)
     --ingress-enabled           Enable ingress (default: false)
     --monitoring-enabled        Enable monitoring (default: true)
-    --auth-provider PROVIDER    Auth provider: none, enterprise (default: none)
     --domain DOMAIN             Base domain (default: nimbletools.dev)
     --local                     Build and use local images (for development with k3d)
+    --k3d-cluster NAME          K3d cluster name (default: nimbletools-quickstart)
     --dry-run                   Show what would be installed without executing
     -h, --help                  Show this help message
 
@@ -65,11 +66,11 @@ EXAMPLES:
     # Install with custom domain and ingress
     ./install.sh --domain example.com --ingress-enabled
 
-    # Install with enterprise auth
-    ./install.sh --auth-provider enterprise -f enterprise-values.yaml
+    # Install with custom provider configuration
+    ./install.sh -f custom-values.yaml
 
     # Local development with k3d
-    ./install.sh --local --domain nimbletools.local
+    ./install.sh --local --domain nimbletools.dev
 
     # Dry run to see what will be installed
     ./install.sh --dry-run
@@ -124,6 +125,10 @@ parse_args() {
                 LOCAL_IMAGES="true"
                 shift
                 ;;
+            --k3d-cluster)
+                K3D_CLUSTER_NAME="$2"
+                shift 2
+                ;;
             --dry-run)
                 DRY_RUN="true"
                 shift
@@ -154,7 +159,7 @@ setup_local_cluster() {
         exit 1
     fi
     
-    local cluster_name="nimbletools-quickstart"
+    local cluster_name="${K3D_CLUSTER_NAME}"
     
     log_info "Creating local Kubernetes cluster with k3d..."
     log_info "Cluster name: $cluster_name"
@@ -173,7 +178,7 @@ setup_local_cluster() {
         
         log_info ""
         log_warning "📝 For direct domain access, add to your /etc/hosts:"
-        log_info "   127.0.0.1 api.nimbletools.local mcp.nimbletools.local"
+        log_info "   127.0.0.1 api.nimbletools.dev mcp.nimbletools.dev"
         log_info ""
         
     else
@@ -234,8 +239,6 @@ check_prerequisites() {
     
     log_success "Prerequisites check passed"
 }
-
-# CRDs are now managed by the Helm chart
 
 # Create namespace if it doesn't exist
 create_namespace() {
@@ -299,6 +302,7 @@ build_helm_command() {
         cmd="$cmd --set controlPlane.image.pullPolicy=Never"
         cmd="$cmd --set rbacController.image.pullPolicy=Never"
         cmd="$cmd --set universalAdapter.image.pullPolicy=Never"
+        cmd="$cmd --set workspaceAuth.image.pullPolicy=Never"
     fi
     
     # Add extra values file if specified
@@ -318,6 +322,12 @@ build_helm_command() {
 build_local_images() {
     log_info "Building and importing local images for k3d..."
     
+    # Check if k3d cluster exists, create if not
+    if ! k3d cluster list | grep -q "^${K3D_CLUSTER_NAME}"; then
+        log_warning "k3d cluster '${K3D_CLUSTER_NAME}' not found. Creating it..."
+        setup_local_cluster
+    fi
+    
     # Check if build script exists
     if [[ ! -f "./scripts/build-images.sh" ]]; then
         log_error "Build script not found: ./scripts/build-images.sh"
@@ -325,8 +335,8 @@ build_local_images() {
         exit 1
     fi
     
-    # Run the build script with --local flag
-    if ./scripts/build-images.sh --local; then
+    # Run the build script with --local flag and cluster name
+    if ./scripts/build-images.sh --local --k3d-cluster "${K3D_CLUSTER_NAME}"; then
         log_success "Local images built and imported successfully"
     else
         log_error "Failed to build local images"
@@ -410,7 +420,7 @@ verify_installation() {
     # Check Control Plane deployment if enabled
     if kubectl get deployment "${RELEASE_NAME}-control-plane" -n "$NAMESPACE" &> /dev/null; then
         log_success "Control Plane deployment found"
-        
+
         # Wait for Control Plane to be ready
         log_info "Waiting for Control Plane to be ready..."
         kubectl wait --for=condition=available --timeout=120s deployment/"${RELEASE_NAME}-control-plane" -n "$NAMESPACE"
@@ -418,7 +428,7 @@ verify_installation() {
     else
         log_info "Control Plane not enabled or not found"
     fi
-    
+
     # Check CRD
     if kubectl get crd mcpservices.mcp.nimbletools.dev &> /dev/null; then
         log_success "MCPService CRD is installed"
@@ -437,25 +447,29 @@ show_post_install_info() {
     log_success "🎉 NimbleTools Core installation complete!"
     log_success ""
     log_info "Dual endpoints are now configured:"
-    log_success "  📊 API Management: http://api.nimbletools.local"
-    log_success "  🔗 MCP Runtime:    http://mcp.nimbletools.local"
+    log_success "  📊 API Management: http://api.nimbletools.dev"
+    log_success "  🔗 MCP Runtime:    http://mcp.nimbletools.dev"
+    log_info ""
+    log_warning "⚠️  IMPORTANT: Authentication Configuration"
+    log_info "   The control-plane uses the community provider by default (no authentication)."
+    log_info "   For production, configure authentication via PROVIDER_CONFIG environment variable."
     log_info ""
     log_warning "⚠️  Add these entries to your /etc/hosts for direct domain access:"
-    log_info "   127.0.0.1 api.nimbletools.local"
-    log_info "   127.0.0.1 mcp.nimbletools.local"
+    log_info "   127.0.0.1 api.nimbletools.dev"
+    log_info "   127.0.0.1 mcp.nimbletools.dev"
     log_info ""
     log_info "Next steps:"
     log_info "1. Verify the installation:"
     log_info "   kubectl get pods -n $NAMESPACE"
     log_info ""
     log_info "2. Test the API endpoint (direct domain access):"
-    log_info "   curl http://api.nimbletools.local/health"
+    log_info "   curl http://api.nimbletools.dev/health"
     log_info ""
     log_info "3. Test the MCP endpoint:"
-    log_info "   curl http://mcp.nimbletools.local/health"
+    log_info "   curl http://mcp.nimbletools.dev/health"
     log_info ""
     log_info "4. Create your first workspace:"
-    log_info "   curl -X POST http://api.nimbletools.local/v1/workspaces -H 'Content-Type: application/json' -d '{\"name\":\"test\"}'"
+    log_info "   curl -X POST http://api.nimbletools.dev/v1/workspaces -H 'Content-Type: application/json' -d '{\"name\":\"test\"}'"
     log_info ""
     log_info "5. Deploy an MCP service:"
     log_info "   kubectl apply -f examples/echo-mcp.yaml"
@@ -474,8 +488,7 @@ main() {
     API_ENABLED="true"
     INGRESS_ENABLED="true"  # Enable ingress by default for dual endpoints
     MONITORING_ENABLED="true"
-    AUTH_PROVIDER="none"
-    DOMAIN="nimbletools.local"  # Use local domain for development
+    DOMAIN="nimbletools.dev"  # Use local domain for development
     DRY_RUN="false"
     
     # Parse arguments

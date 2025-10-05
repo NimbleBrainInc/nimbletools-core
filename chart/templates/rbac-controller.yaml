@@ -89,7 +89,7 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
       - name: rbac-controller
-        image: {{ if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{ end }}{{ .Values.rbacController.image.repository }}:{{ .Chart.AppVersion }}
+        image: {{ if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{ end }}{{ .Values.rbacController.image.repository }}:{{ .Values.rbacController.image.tag | default .Chart.AppVersion }}
         imagePullPolicy: {{ .Values.rbacController.image.pullPolicy }}
         securityContext:
           {{- toYaml .Values.securityContext | nindent 10 }}

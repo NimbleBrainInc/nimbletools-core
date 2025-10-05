@@ -12,9 +12,9 @@ global:
 universalAdapter:
   image:
     repository: nimbletools/universal-adapter
-    tag: "0.1.0"
+    tag: "0.2.0"
     pullPolicy: IfNotPresent
-  
+
   # Default resource limits for MCP services
   resources:
     limits:
@@ -28,11 +28,11 @@ universalAdapter:
 operator:
   image:
     repository: nimbletools/mcp-operator
-    tag: "0.1.0"
+    tag: "0.2.0"
     pullPolicy: IfNotPresent
-  
+
   replicas: 1
-  
+
   resources:
     limits:
       cpu: "1000m"
@@ -40,7 +40,7 @@ operator:
     requests:
       cpu: "200m"
       memory: "256Mi"
-  
+
   # Operator configuration
   config:
     logLevel: "info"
@@ -51,19 +51,19 @@ operator:
 # Control Plane Server configuration
 controlPlane:
   enabled: true
-  
+
   image:
     repository: nimbletools/control-plane
-    tag: "0.1.0"
+    tag: "0.2.0"
     pullPolicy: IfNotPresent
-  
+
   replicas: 2
-  
+
   service:
     type: ClusterIP
     port: 8080
     targetPort: 8080
-  
+
   resources:
     limits:
       cpu: "500m"
@@ -71,16 +71,16 @@ controlPlane:
     requests:
       cpu: "100m"
       memory: "128Mi"
-  
+
   # Authentication configuration
   auth:
-    provider: "none"  # Options: "none", "enterprise"
+    provider: "none" # Options: "none", "enterprise"
     # Enterprise JWT settings (only used if provider is "enterprise")
     jwt:
       secret: ""
       issuer: ""
       algorithm: "HS256"
-  
+
   # CORS configuration
   cors:
     allowOrigins: ["*"]
@@ -90,14 +90,14 @@ controlPlane:
 # RBAC Controller configuration
 rbacController:
   enabled: true
-  
+
   image:
     repository: nimbletools/rbac-controller
-    tag: "0.1.0"
+    tag: "0.2.0"
     pullPolicy: IfNotPresent
-  
+
   replicas: 1
-  
+
   resources:
     limits:
       cpu: "100m"
@@ -106,35 +106,54 @@ rbacController:
       cpu: "50m"
       memory: "64Mi"
 
-# Ingress configuration
-# Nginx Ingress Controller configuration
-nginxIngress:
+
+  imagePullSecrets: []
+
+# Nginx Ingress Controller subchart configuration
+nginx-ingress:
   enabled: true
-  image: registry.k8s.io/ingress-nginx/controller
-  tag: v1.12.0
-  resources:
-    requests:
-      cpu: 100m
-      memory: 90Mi
-    limits:
-      cpu: 200m
-      memory: 256Mi
-  nodeSelector:
-    kubernetes.io/os: linux
+  controller:
+    image: registry.k8s.io/ingress-nginx/controller
+    tag: v1.10.1
+    kind: DaemonSet
+    service:
+      type: LoadBalancer # Default to LoadBalancer for k3d local development
+      # Enterprise environments will override to NodePort with specific nodePorts
+      # nodePorts:
+      #   http: 30080   # ALB expects 30080
+      #   https: 30443  # ALB expects 30443
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+    config:
+      allow-snippet-annotations: "true"
+      ssl-redirect: "false"
+    ingressClass:
+      name: nginx
+      setAsDefaultClass: true
+      controller: k8s.io/ingress-nginx
+    watchIngressWithoutClass: true
+    nodeSelector: {}
+    tolerations: []
+    affinity: {}
 
 # Main ingress configuration
 ingress:
   enabled: true
-  className: "nginx"  # Use nginx instead of traefik
+  className: "nginx" # Use nginx instead of traefik
   annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"  # Allow HTTP for local development
-  
+    nginx.ingress.kubernetes.io/ssl-redirect: "false" # Allow HTTP for local development
+
   # API management endpoint
   api:
     paths:
       - path: /
         pathType: Prefix
-  
+
   # TLS disabled for local development
   tls: []
 
@@ -151,20 +170,23 @@ serviceAccount:
 # RBAC configuration
 rbac:
   create: true
-  
+
   # Cluster-level permissions for the operator
   clusterRole:
     rules:
       - apiGroups: [""]
         resources: ["namespaces"]
-        verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]  # Added create/update/patch/delete for API
+        verbs: ["get", "list", "watch", "create", "update", "patch", "delete"] # Added create/update/patch/delete for API
       - apiGroups: ["apps"]
         resources: ["deployments"]
         verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
       - apiGroups: [""]
-        resources: ["services", "configmaps", "secrets", "events"]  # Added events
+        resources: ["services", "configmaps", "secrets", "events"] # Added events
         verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-      - apiGroups: ["networking.k8s.io"]  # Added for ingress management
+      - apiGroups: [""]
+        resources: ["pods", "pods/log"] # For reading server logs in workspace namespaces only (via RoleBinding)
+        verbs: ["get", "list"]
+      - apiGroups: ["networking.k8s.io"] # Added for ingress management
         resources: ["ingresses"]
         verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
       - apiGroups: ["mcp.nimbletools.dev"]

@@ -160,7 +160,7 @@ parse_args() {
     
     # Set defaults based on mode
     if [[ -z "$K3D_CLUSTER" && "$REGISTRY" == "" ]]; then
-        K3D_CLUSTER="nimbletools-dev"
+        K3D_CLUSTER="nimbletools-quickstart"
     fi
 }
 
@@ -353,7 +353,7 @@ main() {
     # Component definitions
     local components=(
         "universal-adapter:universal-adapter"
-        "mcp-operator:operator"
+        "mcp-operator:mcp-operator"
         "control-plane:control-plane"
         "rbac-controller:rbac-controller"
     )

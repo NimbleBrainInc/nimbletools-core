@@ -1,0 +1,6 @@
+# Community Provider Configuration
+# This configuration uses the open-access community provider
+# WARNING: This provider allows unrestricted access - use only for development/testing
+
+class: nimbletools_control_plane.providers.community.CommunityProvider
+kwargs: {}

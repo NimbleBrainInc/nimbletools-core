@@ -35,7 +35,7 @@ The MCP ecosystem has powerful tools but inconsistent deployment patterns. Nimbl
 # One command gets you running (creates local cluster if needed)
 curl -sSL https://raw.githubusercontent.com/NimbleBrainInc/nimbletools-core/refs/heads/main/install.sh | bash
 
-# Configure local domains for API access
+# Configure local domains for API access  
 echo "127.0.0.1 api.nimbletools.local mcp.nimbletools.local" | sudo tee -a /etc/hosts
 ```
 
@@ -69,7 +69,7 @@ kubectl get pods -n nimbletools-system
 ./scripts/register-community-registry.sh
 
 # Browse available services via API
-curl http://api.nimbletools.local/api/v1/registry/servers
+curl http://api.nimbletools.local/v1/registry/servers
 
 # Deploy directly from the registry
 # (Services come pre-configured with best practices)
@@ -165,7 +165,7 @@ Instead of hunting for MCP services across GitHub repos and documentation, brows
 ./scripts/register-community-registry.sh
 
 # Browse ready-to-use services
-curl http://api.nimbletools.local/api/v1/registry/servers | jq '.servers[].name'
+curl http://api.nimbletools.local/v1/registry/servers | jq '.servers[].name'
 
 # Deploy any service instantly
 kubectl create -f registry-community/web-scraper.yaml
@@ -223,7 +223,7 @@ curl -sSL https://github.com/NimbleBrainInc/ntcli/releases/latest/download/insta
 
 ```bash
 # Configure your NimbleTools Core endpoint
-ntcli config set endpoint http://api.nimbletools.local
+ntcli config set endpoint http://api.nimbletools.dev
 
 # Workspace management
 ntcli workspace create dev-team
@@ -317,13 +317,13 @@ Once installed, access the management API:
 
 ```bash
 # List workspaces
-curl http://api.nimbletools.local/api/v1/workspaces
+curl http://api.nimbletools.dev/api/v1/workspaces
 
 # List services
-curl http://api.nimbletools.local/api/v1/workspaces/default/servers
+curl http://api.nimbletools.dev/api/v1/workspaces/default/servers
 
 # API documentation
-open http://api.nimbletools.local/docs
+open http://api.nimbletools.dev/docs
 ```
 
 ## Examples & Templates
@@ -398,11 +398,12 @@ kubectl port-forward service/your-service 8080:8000
 curl http://api.nimbletools.ai/health
 ```
 
+## Documentation
+
+📚 **[Full Documentation](docs/)** - Complete guides and references
+
 ## Community & Support
 
-- 📖 **[Full Documentation](https://docs.nimbletools.dev/core)**
-- 🚀 **[Quick Start Guide](docs/QUICKSTART.md)**
-- 🏗️ **[Architecture Guide](docs/ARCHITECTURE.md)**
 - 💬 **[Discord Community](https://www.nimbletools.ai/discord?utm_source=github&utm_medium=readme&utm_campaign=nimbletools-core&utm_content=community-section)**
 - 🐛 **[GitHub Issues](https://github.com/NimbleBrainInc/nimbletools-core/issues)**
 - 📋 **[Discussions](https://github.com/NimbleBrainInc/nimbletools-core/discussions)**

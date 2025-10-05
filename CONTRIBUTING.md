@@ -87,7 +87,7 @@ kubectl apply -f examples/everything.yaml
 kubectl get mcpservices
 
 # Test API endpoints
-curl http://nimbletools.local/health
+curl http://nimbletools.dev/health
 ```
 
 ### Integration Tests

@@ -59,9 +59,7 @@ def create_mcp_operator_rolebinding(namespace_name: str) -> bool:
     try:
         # Check if RoleBinding already exists
         try:
-            rbac_v1.read_namespaced_role_binding(
-                name=rolebinding_name, namespace=namespace_name
-            )
+            rbac_v1.read_namespaced_role_binding(name=rolebinding_name, namespace=namespace_name)
             log(f"RoleBinding {rolebinding_name} already exists in {namespace_name}")
             return True
         except ApiException as e:
@@ -95,9 +93,7 @@ def create_mcp_operator_rolebinding(namespace_name: str) -> bool:
             ),
         )
 
-        rbac_v1.create_namespaced_role_binding(
-            namespace=namespace_name, body=rolebinding_body
-        )
+        rbac_v1.create_namespaced_role_binding(namespace=namespace_name, body=rolebinding_body)
 
         log(f"✅ Created RoleBinding {rolebinding_name} in namespace {namespace_name}")
         return True
@@ -136,9 +132,7 @@ async def startup_handler(**kwargs: Any) -> None:
                 else:
                     log(f"⚠️ Failed to process workspace {namespace_name}")
 
-        log(
-            f"✅ Startup complete. Processed {workspace_count} existing workspace namespaces"
-        )
+        log(f"✅ Startup complete. Processed {workspace_count} existing workspace namespaces")
 
     except Exception as e:
         log(f"❌ Error during startup: {e}")

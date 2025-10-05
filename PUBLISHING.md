@@ -140,7 +140,7 @@ make install-k8s-local
 
 # Test the installation
 kubectl get pods -n nimbletools-system
-curl http://api.nimbletools.local/health
+curl http://api.nimbletools.dev/health
 ```
 
 ### 4. Publish

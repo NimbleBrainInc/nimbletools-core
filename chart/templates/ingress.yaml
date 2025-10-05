@@ -1,4 +1,4 @@
-{{- if and .Values.controlPlane.enabled .Values.ingress.enabled -}}
+{{- if .Values.ingress.enabled -}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -27,7 +27,24 @@ spec:
     {{- end }}
   {{- end }}
   rules:
-    # API management endpoint - routes to API service
+    {{- if .Values.ingress.hosts }}
+    # Use custom hosts if provided
+    {{- range .Values.ingress.hosts }}
+    - host: {{ .host }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "nimbletools-core.controlPlaneName" $ }}
+                port:
+                  number: {{ $.Values.controlPlane.service.port }}
+          {{- end }}
+    {{- end }}
+    {{- else }}
+    # Default host pattern using global.domain
     - host: api.{{ .Values.global.domain }}
       http:
         paths:
@@ -52,4 +69,5 @@ spec:
                 name: {{ include "nimbletools-core.controlPlaneName" $ }}
                 port:
                   number: {{ $.Values.controlPlane.service.port }}
+    {{- end }}
 {{- end }}

@@ -1,8 +1,5 @@
-# Multi-stage build for NimbleTools Control Plane
-# Uses uv for fast, reproducible builds
-
 # Builder stage
-FROM python:3.13-slim as builder
+FROM python:3.13-slim AS builder
 
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
@@ -23,7 +20,7 @@ COPY src ./src
 RUN uv pip install --no-deps .
 
 # Runtime stage
-FROM python:3.13-slim as runtime
+FROM python:3.13-slim AS runtime
 
 # Install system dependencies for health checks
 RUN apt-get update && apt-get install -y \
@@ -41,6 +38,9 @@ COPY --from=builder --chown=app:app /app/.venv /app/.venv
 # Set working directory
 WORKDIR /app
 
+# Copy configuration files
+COPY --chown=app:app config /app/config
+
 # Ensure virtual environment is in PATH
 ENV PATH="/app/.venv/bin:$PATH"
 
@@ -57,7 +57,7 @@ EXPOSE 8080
 # Environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    AUTH_PROVIDER=none
+    PROVIDER_CONFIG=/app/config/community-provider.yaml
 
 # Start API server
 CMD ["python", "-m", "nimbletools_control_plane.main"]

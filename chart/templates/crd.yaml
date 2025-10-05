@@ -12,308 +12,332 @@ spec:
     plural: mcpservices
     singular: mcpservice
     shortNames:
-    - mcps
+      - mcps
   scope: Namespaced
   versions:
-  - name: v1
-    served: true
-    storage: true
-    schema:
-      openAPIV3Schema:
-        type: object
-        properties:
-          apiVersion:
-            type: string
-          kind:
-            type: string
-          metadata:
-            type: object
-          spec:
-            type: object
-            required:
-            - container
-            - deployment
-            properties:
-              description:
-                type: string
-                description: "Human-readable description of the service"
-              replicas:
-                type: integer
-                minimum: 0
-                default: 1
-                description: "Number of replicas to run (0 for scale-to-zero)"
-              timeout:
-                type: integer
-                minimum: 1
-                maximum: 3600
-                default: 300
-                description: "Request timeout in seconds"
-              tools:
-                type: array
-                description: "List of tools provided by this service"
-                items:
-                  type: object
-                  required:
-                  - name
-                  - description
-                  properties:
-                    name:
-                      type: string
-                      description: "Tool name"
-                    description:
-                      type: string
-                      description: "Tool description"
-                    inputSchema:
-                      type: object
-                      description: "JSON Schema for tool input parameters"
-                      x-kubernetes-preserve-unknown-fields: true
-              mcp_resources:
-                type: array
-                description: "List of MCP resources provided by this service"
-                items:
-                  type: object
-                  required:
-                  - name
-                  - description
-                  properties:
-                    name:
-                      type: string
-                      description: "Resource name"
-                    description:
-                      type: string
-                      description: "Resource description"
-                    mimeType:
-                      type: string
-                      description: "MIME type of the resource"
-              prompts:
-                type: array
-                description: "List of prompts provided by this service"
-                items:
-                  type: object
-                  required:
-                  - name
-                  - description
-                  properties:
-                    name:
-                      type: string
-                      description: "Prompt name"
-                    description:
-                      type: string
-                      description: "Prompt description"
-                    arguments:
-                      type: array
-                      items:
-                        type: object
-                        properties:
-                          name:
-                            type: string
-                          description:
-                            type: string
-                          required:
-                            type: boolean
-              environment:
-                type: object
-                additionalProperties:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              required:
+                - container
+              properties:
+                description:
                   type: string
-                description: "Environment variables to pass to the container"
-              credentials:
-                type: array
-                description: "List of credentials required by this service"
-                items:
-                  type: object
-                  required:
-                  - name
-                  - required
-                  properties:
-                    name:
-                      type: string
-                      description: "Credential name (environment variable)"
+                  description: "Human-readable description of the service"
+                replicas:
+                  type: integer
+                  minimum: 0
+                  default: 1
+                  description: "Number of replicas to run (0 for scale-to-zero)"
+                timeout:
+                  type: integer
+                  minimum: 1
+                  maximum: 3600
+                  default: 300
+                  description: "Request timeout in seconds"
+                tools:
+                  type: array
+                  description: "List of tools provided by this service"
+                  items:
+                    type: object
                     required:
-                      type: boolean
-                      description: "Whether this credential is required"
-                    description:
-                      type: string
-                      description: "Human-readable credential description"
-              resources:
-                type: object
-                description: "Resource requirements and limits"
-                properties:
-                  requests:
-                    type: object
+                      - name
+                      - description
                     properties:
-                      cpu:
+                      name:
                         type: string
-                        default: "50m"
-                      memory:
+                        description: "Tool name"
+                      description:
                         type: string
-                        default: "64Mi"
-                  limits:
+                        description: "Tool description"
+                      inputSchema:
+                        type: object
+                        description: "JSON Schema for tool input parameters"
+                        x-kubernetes-preserve-unknown-fields: true
+                mcp_resources:
+                  type: array
+                  description: "List of MCP resources provided by this service"
+                  items:
                     type: object
+                    required:
+                      - name
+                      - description
                     properties:
-                      cpu:
+                      name:
                         type: string
-                        default: "200m"
-                      memory:
+                        description: "Resource name"
+                      description:
                         type: string
-                        default: "128Mi"
-              routing:
-                type: object
-                description: "Routing configuration for the service"
-                properties:
-                  path:
-                    type: string
-                    description: "HTTP path prefix for routing (default: /services/{name})"
-                  port:
-                    type: integer
-                    minimum: 1
-                    maximum: 65535
-                    default: 8000
-                    description: "Container port number"
-                  healthPath:
-                    type: string
-                    default: "/health"
-                    description: "Health check endpoint path"
-                  discoveryPath:
-                    type: string
-                    default: "/mcp/discover"
-                    description: "MCP discovery endpoint path"
-              scaling:
-                type: object
-                description: "Auto-scaling configuration"
-                properties:
-                  minReplicas:
-                    type: integer
-                    minimum: 0
-                    default: 0
-                    description: "Minimum number of replicas (0 for scale-to-zero)"
-                  maxReplicas:
-                    type: integer
-                    minimum: 1
-                    default: 10
-                    description: "Maximum number of replicas"
-                  targetConcurrency:
-                    type: integer
-                    minimum: 1
-                    default: 10
-                    description: "Target concurrent requests per pod"
-                  scaleDownDelay:
-                    type: string
-                    default: "5m"
-                    description: "Time to wait before scaling down to zero"
-              deployment:
-                type: object
-                required:
-                - type
-                description: "Deployment configuration"
-                properties:
-                  type:
-                    type: string
-                    enum: ["http", "stdio"]
-                    description: "Deployment type: http for direct containers, stdio for universal adapter"
-                  healthPath:
-                    type: string
-                    default: "/health"
-                    description: "Health check endpoint path"
-                  stdio:
+                        description: "Resource description"
+                      mimeType:
+                        type: string
+                        description: "MIME type of the resource"
+                prompts:
+                  type: array
+                  description: "List of prompts provided by this service"
+                  items:
                     type: object
-                    description: "Configuration for stdio-based MCP servers"
+                    required:
+                      - name
+                      - description
                     properties:
-                      executable:
+                      name:
                         type: string
-                        description: "Executable to run (e.g., npx, node, python)"
-                      args:
+                        description: "Prompt name"
+                      description:
+                        type: string
+                        description: "Prompt description"
+                      arguments:
                         type: array
                         items:
-                          type: string
-                        description: "Arguments to pass to the executable"
-                      workingDir:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            description:
+                              type: string
+                            required:
+                              type: boolean
+                packages:
+                  type: array
+                  description: "List of MCP server packages with environment variable definitions"
+                  items:
+                    type: object
+                    required:
+                      - registryType
+                      - identifier
+                      - version
+                      - transport
+                    properties:
+                      registryType:
                         type: string
-                        default: "/tmp"
-                        description: "Working directory for the process"
-                      environment:
+                        description: "Registry type (e.g., 'npm', 'pypi', 'oci', 'nuget', 'mcpb')"
+                      registryBaseUrl:
+                        type: string
+                        description: "Optional custom registry base URL"
+                      identifier:
+                        type: string
+                        description: "Package identifier in the registry"
+                      version:
+                        type: string
+                        description: "Package version"
+                      transport:
                         type: object
-                        additionalProperties:
+                        required:
+                          - type
+                        properties:
+                          type:
+                            type: string
+                            enum: ["stdio", "streamable-http"]
+                      runtimeHint:
+                        type: string
+                        description: "Runtime command hint (e.g., 'npx', 'uvx', 'docker')"
+                      runtimeArguments:
+                        type: array
+                        description: "Arguments to pass to the runtime command"
+                        items:
+                          type: object
+                          properties:
+                            type:
+                              type: string
+                              enum: ["positional", "named"]
+                            name:
+                              type: string
+                              description: "Name of the argument (for named arguments)"
+                            value:
+                              type: string
+                              description: "Value of the argument"
+                      environmentVariables:
+                        type: array
+                        description: "Environment variables for this package"
+                        items:
+                          type: object
+                          required:
+                            - name
+                          properties:
+                            name:
+                              type: string
+                              description: "Environment variable name"
+                            value:
+                              type: string
+                              description: "Optional default value"
+                            isSecret:
+                              type: boolean
+                              description: "Whether this is a secret value"
+                            isRequired:
+                              type: boolean
+                              description: "Whether this variable is required"
+                            description:
+                              type: string
+                              description: "Description of the environment variable"
+                            example:
+                              type: string
+                              description: "Example value for documentation"
+                resources:
+                  type: object
+                  description: "Resource requirements and limits"
+                  properties:
+                    requests:
+                      type: object
+                      properties:
+                        cpu:
                           type: string
-                        description: "Environment variables for the process"
-              container:
-                type: object
-                required:
-                - image
-                description: "Container configuration"
-                properties:
-                  image:
-                    type: string
-                    description: "Container image to use"
-                  registry:
-                    type: string
-                    default: "docker.io"
-                    description: "Container registry"
-                  port:
-                    type: integer
-                    minimum: 1
-                    maximum: 65535
-                    default: 8000
-                    description: "Container port number"
-          status:
-            type: object
-            properties:
-              phase:
-                type: string
-                enum: ["Pending", "Running", "Failed", "Succeeded"]
-                description: "Current phase of the MCPService"
-              conditions:
-                type: array
-                items:
+                          default: "50m"
+                        memory:
+                          type: string
+                          default: "64Mi"
+                    limits:
+                      type: object
+                      properties:
+                        cpu:
+                          type: string
+                          default: "200m"
+                        memory:
+                          type: string
+                          default: "128Mi"
+                routing:
+                  type: object
+                  description: "Routing configuration for the service"
+                  properties:
+                    path:
+                      type: string
+                      description: "HTTP path prefix for routing (default: /services/{name})"
+                    port:
+                      type: integer
+                      minimum: 1
+                      maximum: 65535
+                      default: 8000
+                      description: "Container port number"
+                    healthPath:
+                      type: string
+                      default: "/health"
+                      description: "Health check endpoint path"
+                    healthCheck:
+                      type: boolean
+                      default: true
+                      description: "Enable or disable health checks for this service"
+                    mcpPath:
+                      type: string
+                      default: "/mcp"
+                      description: "MCP endpoint path on the container (for nginx rewrite-target)"
+                    discoveryPath:
+                      type: string
+                      default: "/mcp/discover"
+                      description: "MCP discovery endpoint path"
+                scaling:
+                  type: object
+                  description: "Auto-scaling configuration"
+                  properties:
+                    minReplicas:
+                      type: integer
+                      minimum: 0
+                      default: 0
+                      description: "Minimum number of replicas (0 for scale-to-zero)"
+                    maxReplicas:
+                      type: integer
+                      minimum: 1
+                      default: 10
+                      description: "Maximum number of replicas"
+                    targetConcurrency:
+                      type: integer
+                      minimum: 1
+                      default: 10
+                      description: "Target concurrent requests per pod"
+                    scaleDownDelay:
+                      type: string
+                      default: "5m"
+                      description: "Time to wait before scaling down to zero"
+                container:
+                  type: object
+                  required:
+                    - image
+                  description: "Container configuration"
+                  properties:
+                    image:
+                      type: string
+                      description: "Container image to use"
+                    registry:
+                      type: string
+                      default: "docker.io"
+                      description: "Container registry"
+                    port:
+                      type: integer
+                      minimum: 1
+                      maximum: 65535
+                      default: 8000
+                      description: "Container port number"
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  enum: ["Pending", "Running", "Failed", "Succeeded"]
+                  description: "Current phase of the MCPService"
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                        enum: ["True", "False", "Unknown"]
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                    required:
+                      - type
+                      - status
+                deploymentStatus:
                   type: object
                   properties:
-                    type:
-                      type: string
-                    status:
-                      type: string
-                      enum: ["True", "False", "Unknown"]
-                    lastTransitionTime:
-                      type: string
-                      format: date-time
-                    reason:
-                      type: string
-                    message:
-                      type: string
-                  required:
-                  - type
-                  - status
-              deploymentStatus:
-                type: object
-                properties:
-                  ready:
-                    type: boolean
-                  replicas:
-                    type: integer
-                  readyReplicas:
-                    type: integer
-              serviceEndpoint:
-                type: string
-                description: "HTTP endpoint where the service is accessible"
-              lastDiscovery:
-                type: string
-                format: date-time
-                description: "Last time service discovery was performed"
-    additionalPrinterColumns:
-    - name: Image
-      type: string
-      description: Container image
-      jsonPath: .spec.container.image
-    - name: Phase
-      type: string
-      description: Current phase
-      jsonPath: .status.phase
-    - name: Endpoint
-      type: string
-      description: Service endpoint
-      jsonPath: .status.serviceEndpoint
-    - name: Ready
-      type: string
-      description: Ready status
-      jsonPath: .status.deploymentStatus.ready
-    - name: Age
-      type: date
-      jsonPath: .metadata.creationTimestamp
+                    ready:
+                      type: boolean
+                    replicas:
+                      type: integer
+                    readyReplicas:
+                      type: integer
+                serviceEndpoint:
+                  type: string
+                  description: "HTTP endpoint where the service is accessible"
+                lastDiscovery:
+                  type: string
+                  format: date-time
+                  description: "Last time service discovery was performed"
+      additionalPrinterColumns:
+        - name: Image
+          type: string
+          description: Container image
+          jsonPath: .spec.container.image
+        - name: Phase
+          type: string
+          description: Current phase
+          jsonPath: .status.phase
+        - name: Endpoint
+          type: string
+          description: Service endpoint
+          jsonPath: .status.serviceEndpoint
+        - name: Ready
+          type: string
+          description: Ready status
+          jsonPath: .status.deploymentStatus.ready
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
