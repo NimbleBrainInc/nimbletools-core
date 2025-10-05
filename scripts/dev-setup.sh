@@ -339,7 +339,7 @@ create_dev_values() {
     cat > values-dev.yaml << EOF
 # Development values for NimbleTools Core
 global:
-  domain: nimbletools.local
+  domain: nimbletools.dev
   imageRegistry: localhost:$REGISTRY_PORT
   namespace: nimbletools-dev
 
@@ -352,7 +352,7 @@ universalAdapter:
 
 operator:
   image:
-    repository: nimbletools/operator
+    repository: nimbletools/mcp-operator
     tag: dev
     pullPolicy: Always
   config:
@@ -376,7 +376,7 @@ ingress:
   annotations:
     traefik.ingress.kubernetes.io/router.tls: "false"
   hosts:
-    - host: api.nimbletools.local
+    - host: api.nimbletools.dev
       paths:
         - path: /
           pathType: Prefix

@@ -68,12 +68,13 @@ class TestWorkspaceNamespaceDetection:
 class TestRoleBindingCreation:
     """Test RoleBinding creation functionality."""
 
-    @patch('nimbletools_rbac_controller.main.rbac_v1')
-    @patch('nimbletools_rbac_controller.main.log')
+    @patch("nimbletools_rbac_controller.main.rbac_v1")
+    @patch("nimbletools_rbac_controller.main.log")
     def test_should_create_rolebinding_successfully(self, _mock_log, mock_rbac_v1):
         """Test successful RoleBinding creation."""
         # Arrange - Set the global rbac_v1 to the mock
         import nimbletools_rbac_controller.main as main_module
+
         main_module.rbac_v1 = mock_rbac_v1
 
         mock_rbac_v1.read_namespaced_role_binding.side_effect = ApiException(status=404)
@@ -100,12 +101,13 @@ class TestRoleBindingCreation:
         # Cleanup
         main_module.rbac_v1 = None
 
-    @patch('nimbletools_rbac_controller.main.rbac_v1')
-    @patch('nimbletools_rbac_controller.main.log')
+    @patch("nimbletools_rbac_controller.main.rbac_v1")
+    @patch("nimbletools_rbac_controller.main.log")
     def test_should_skip_creation_when_rolebinding_exists(self, mock_log, mock_rbac_v1):
         """Test skipping creation when RoleBinding already exists."""
         # Arrange - Set the global rbac_v1 to the mock
         import nimbletools_rbac_controller.main as main_module
+
         main_module.rbac_v1 = mock_rbac_v1
 
         mock_rbac_v1.read_namespaced_role_binding.return_value = MagicMock()
@@ -124,12 +126,13 @@ class TestRoleBindingCreation:
         # Cleanup
         main_module.rbac_v1 = None
 
-    @patch('nimbletools_rbac_controller.main.rbac_v1')
-    @patch('nimbletools_rbac_controller.main.log')
+    @patch("nimbletools_rbac_controller.main.rbac_v1")
+    @patch("nimbletools_rbac_controller.main.log")
     def test_should_handle_api_exception_during_creation(self, mock_log, mock_rbac_v1):
         """Test handling of ApiException during RoleBinding creation."""
         # Arrange - Set the global rbac_v1 to the mock
         import nimbletools_rbac_controller.main as main_module
+
         main_module.rbac_v1 = mock_rbac_v1
 
         mock_rbac_v1.read_namespaced_role_binding.side_effect = ApiException(status=404)
@@ -151,12 +154,13 @@ class TestRoleBindingCreation:
         # Cleanup
         main_module.rbac_v1 = None
 
-    @patch('nimbletools_rbac_controller.main.rbac_v1')
-    @patch('nimbletools_rbac_controller.main.log')
+    @patch("nimbletools_rbac_controller.main.rbac_v1")
+    @patch("nimbletools_rbac_controller.main.log")
     def test_should_handle_unexpected_exception(self, mock_log, mock_rbac_v1):
         """Test handling of unexpected exceptions."""
         # Arrange - Set the global rbac_v1 to the mock
         import nimbletools_rbac_controller.main as main_module
+
         main_module.rbac_v1 = mock_rbac_v1
 
         mock_rbac_v1.read_namespaced_role_binding.side_effect = ValueError("Unexpected error")
@@ -174,12 +178,13 @@ class TestRoleBindingCreation:
         # Cleanup
         main_module.rbac_v1 = None
 
-    @patch('nimbletools_rbac_controller.main.rbac_v1')
-    @patch('nimbletools_rbac_controller.main.log')
+    @patch("nimbletools_rbac_controller.main.rbac_v1")
+    @patch("nimbletools_rbac_controller.main.log")
     def test_should_reraise_non_404_api_exceptions_during_check(self, _mock_log, mock_rbac_v1):
         """Test that non-404 ApiExceptions during existence check are re-raised."""
         # Arrange - Set the global rbac_v1 to the mock
         import nimbletools_rbac_controller.main as main_module
+
         main_module.rbac_v1 = mock_rbac_v1
 
         mock_rbac_v1.read_namespaced_role_binding.side_effect = ApiException(
@@ -197,11 +202,12 @@ class TestRoleBindingCreation:
         # Cleanup
         main_module.rbac_v1 = None
 
-    @patch('nimbletools_rbac_controller.main.log')
+    @patch("nimbletools_rbac_controller.main.log")
     def test_should_return_false_when_rbac_client_not_initialized(self, mock_log):
         """Test handling when RBAC client is not initialized."""
         # Arrange - Ensure rbac_v1 is None
         import nimbletools_rbac_controller.main as main_module
+
         main_module.rbac_v1 = None
         namespace_name = "ws-test-workspace"
 
@@ -216,7 +222,7 @@ class TestRoleBindingCreation:
 class TestLogging:
     """Test logging functionality."""
 
-    @patch('nimbletools_rbac_controller.main.print')
+    @patch("nimbletools_rbac_controller.main.print")
     def test_should_format_log_message_correctly(self, mock_print):
         """Test that log messages are formatted correctly."""
         # Act
@@ -236,4 +242,3 @@ class TestConstants:
         assert MCP_OPERATOR_CLUSTER_ROLE == "nimbletools-core-operator"
         assert WORKSPACE_LABEL == "mcp.nimbletools.dev/workspace_id"
         assert WORKSPACE_PREFIX == "ws-"
-

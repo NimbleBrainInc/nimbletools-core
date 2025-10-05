@@ -1,0 +1,50 @@
+# NGINX Ingress Controller configuration
+enabled: true
+
+controller:
+  image: registry.k8s.io/ingress-nginx/controller
+  tag: "v1.10.1"
+
+  # Run as DaemonSet for better performance
+  kind: DaemonSet
+
+  # Service configuration
+  service:
+    type: LoadBalancer # Default to LoadBalancer for k3d local development
+
+  # Resource limits
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  # Config map settings
+  config:
+    allow-snippet-annotations: "true" # Required for MCP service configuration snippets
+    ssl-redirect: "false" # Disable SSL redirect for local development
+
+  # Ingress class configuration
+  ingressClass:
+    name: nginx
+    setAsDefaultClass: true
+    controller: k8s.io/ingress-nginx
+
+  # Watch all namespaces for ingress resources
+  watchIngressWithoutClass: true
+
+  # Node selector, tolerations, and affinity
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# Service account configuration
+serviceAccount:
+  create: true
+  name: ingress-nginx
+
+# RBAC configuration
+rbac:
+  create: true

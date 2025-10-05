@@ -33,23 +33,28 @@ test: ## Run tests with pytest
 test-cov: ## Run tests with coverage report
 	uv run pytest tests/ --cov=nimbletools_control_plane --cov-report=html --cov-report=term-missing
 
-# CI simulation (exact CI workflow)
-ci-check: ## Run exact CI workflow locally
-	@echo "🚀 Running CI checks locally..."
+# Quality checks
+check: lint type-check test ## Run all quality checks (basic)
+
+# Combined verify target for CI/CD
+verify: ## Run all verification steps (format, lint, type-check, test) - use COVERAGE=1 for coverage reports
+	@echo "🔍 Running full verification suite..."
 	@echo "================================"
-	uv sync --dev --frozen
+	@echo "✨ Formatting code..."
+	uv run ruff format src/ tests/
+	uv run ruff check src/ tests/ --fix
 	@echo "🔍 Running linting..."
 	uv run ruff check src/ tests/
 	@echo "🏷️  Running type checking..."
 	uv run mypy --package nimbletools_control_plane
-	@echo "🧪 Running tests with coverage..."
+	@echo "🧪 Running tests..."
+ifdef COVERAGE
 	uv run pytest tests/ --cov=nimbletools_control_plane --cov-report=xml --cov-report=term-missing
+else
+	uv run pytest tests/ -v
+endif
 	@echo ""
-	@echo "✅ All CI checks passed!"
-	@echo "🎉 Your code is ready to commit!"
-
-# Quality checks
-check: lint type-check test ## Run all quality checks (basic)
+	@echo "✅ All verification steps passed!"
 
 # Development server
 run: ## Run development server

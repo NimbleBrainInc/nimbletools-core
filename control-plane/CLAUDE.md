@@ -10,6 +10,12 @@ The goal is to ensure code is:
 - **Maintainable** (linting, typing, tests)
 - **Secure** (minimal, non-root containers)
 
+## Documentation Standards
+
+- **Centralized documentation**: All platform documentation should be stored in `/docs` at the repository root, not in component-specific directories
+- **Single source of truth**: Avoid duplicating documentation across components
+- **Cross-references**: Use relative paths to link between documents (e.g., `../docs/provider-system.md`)
+
 ---
 
 ## Project Layout
@@ -182,6 +188,61 @@ Always include tests for error conditions:
 - Kubernetes API errors (404, 403, 500)
 - Invalid input validation
 - Resource conflicts
+
+---
+
+## Architecture Decisions
+
+### Multi-Tenant Workspace Isolation
+
+- **Organization-based filtering**: All workspace operations are scoped to the user's organization
+- **Required tenant context**: Every workspace must belong to an organization (no orphaned workspaces)
+- **Authentication requirements**: `validate_token` must return both `user_id` and `organization_id`
+- **Kubernetes label strategy**:
+  - Query label: `mcp.nimbletools.dev/organization_id` for filtering
+  - Owner label: `mcp.nimbletools.dev/user_id` for workspace ownership
+  - No fallback to legacy fields - fail explicitly if data missing
+
+### Data Model Standards
+
+- **UUID-only IDs**: All entity IDs (`workspace_id`, `user_id`, `organization_id`) must be UUIDs
+- **No string IDs**: Never accept or return string identifiers for core entities
+- **Required fields philosophy**: Make fields required at creation rather than optional with defaults
+- **Field naming conventions**:
+  - `user_id`: The user who owns/created a resource
+  - `organization_id`: The organization that owns a resource
+  - `created_at`: Timestamp of creation (datetime type)
+  - Never use: `owner`, `created_by`, `created` (string)
+
+### API Design Principles
+
+- **Explicit over implicit**: Require all necessary data upfront (no magic defaults)
+- **Fail fast**: Return 401/403 immediately if auth context incomplete
+- **Consistent responses**: All list endpoints filter by organization automatically
+- **No cross-tenant data**: Never allow viewing resources from other organizations
+
+### Workspace Identity Management
+
+- **Workspace Naming Convention**:
+  - Format: `{base_name}-{uuid}` (e.g., `my-workspace-550e8400-e29b-41d4-a716-446655440000`)
+  - Namespace format: `ws-{workspace_name}`
+  - Always use `workspace_utils.generate_workspace_identifiers()` for consistency
+  - Workspace names are immutable after creation
+- **Dual Identification**: Workspaces have both a UUID (`workspace_id`) and human-readable name (`workspace_name`)
+- **No String Parsing**: Never extract metadata from namespace names or other string manipulation
+
+### Kubernetes Labels as Source of Truth
+
+- **Required Labels**: Every workspace namespace MUST have:
+  - `mcp.nimbletools.dev/workspace_id` - The workspace UUID
+  - `mcp.nimbletools.dev/workspace_name` - The full workspace name including UUID
+  - `mcp.nimbletools.dev/user_id` - The owner's UUID
+  - `mcp.nimbletools.dev/organization_id` - The organization's UUID
+- **No Fallbacks**: Missing required labels = invalid configuration
+  - Log and skip invalid workspaces during listing
+  - Return HTTP 500 for invalid workspaces during detail retrieval
+  - Never use zero UUIDs, "unknown" values, or None as fallbacks
+- **Label Authority**: Labels are the single source of truth for workspace metadata
 
 ---
 

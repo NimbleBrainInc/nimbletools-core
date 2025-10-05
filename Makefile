@@ -1,5 +1,8 @@
 # NimbleTools Core - Root Makefile
-.PHONY: help install test lint type-check format clean docker-build
+.PHONY: help install verify check clean docker-build update-version
+
+# Version from VERSION file
+VERSION ?= 0.2.0
 
 # Default target
 help: ## Show this help message
@@ -8,7 +11,7 @@ help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 # Installation
-install: install-control-plane install-operator install-universal-adapter ## Install all dependencies
+install: install-control-plane install-operator install-universal-adapter install-rbac-controller ## Install all dependencies
 	@echo "✅ All dependencies installed"
 
 install-control-plane: ## Install control plane dependencies
@@ -17,96 +20,34 @@ install-control-plane: ## Install control plane dependencies
 
 install-operator: ## Install operator dependencies
 	@echo "📦 Installing operator dependencies..."
-	@cd operator && uv sync --dev
+	@cd mcp-operator && uv sync --dev
 
 install-universal-adapter: ## Install universal adapter dependencies
 	@echo "📦 Installing universal adapter dependencies..."
 	@cd universal-adapter && uv sync --dev
 
-# Testing
-test: test-control-plane test-operator test-universal-adapter ## Run all tests
-	@echo "✅ All tests completed"
+install-rbac-controller: ## Install rbac controller dependencies
+	@echo "📦 Installing rbac controller dependencies..."
+	@cd rbac-controller && uv sync --dev
 
-test-control-plane: ## Run control plane tests
-	@echo "🧪 Testing control plane..."
-	@cd control-plane && uv run pytest tests/ -v
+# Verification - single command for all quality checks
+verify: ## Run all verification steps (format, lint, type-check, test) in all modules
+	@echo "🔍 Running full verification suite for all modules..."
+	@echo "================================================"
+	@cd control-plane && $(MAKE) verify
+	@cd mcp-operator && $(MAKE) verify
+	@cd universal-adapter && $(MAKE) verify
+	@cd rbac-controller && $(MAKE) verify
+	@echo ""
+	@echo "✅ All modules verified successfully!"
 
-test-operator: ## Run operator tests
-	@echo "🧪 Testing operator..."
-	@cd operator && uv run pytest tests/ -v
 
-test-universal-adapter: ## Run universal adapter tests
-	@echo "🧪 Testing universal adapter..."
-	@cd universal-adapter && uv run pytest tests/ -v
 
-test-cov: test-cov-control-plane test-cov-operator test-cov-universal-adapter ## Run all tests with coverage
-	@echo "✅ All tests with coverage completed"
-
-test-cov-control-plane: ## Run control plane tests with coverage
-	@echo "🧪 Testing control plane with coverage..."
-	@cd control-plane && uv run pytest tests/ --cov=nimbletools_control_plane --cov-report=html --cov-report=term-missing
-
-test-cov-operator: ## Run operator tests with coverage
-	@echo "🧪 Testing operator with coverage..."
-	@cd operator && uv run pytest tests/ --cov=nimbletools_core_operator --cov-report=html --cov-report=term-missing
-
-test-cov-universal-adapter: ## Run universal adapter tests with coverage
-	@echo "🧪 Testing universal adapter with coverage..."
-	@cd universal-adapter && uv run pytest tests/ --cov=nimbletools_universal_adapter --cov-report=html --cov-report=term-missing
-
-# Linting and formatting
-lint: lint-control-plane lint-operator lint-universal-adapter ## Run all linting
-	@echo "✅ All linting completed"
-
-lint-control-plane: ## Lint control plane
-	@echo "🔍 Linting control plane..."
-	@cd control-plane && uv run ruff check src/ tests/
-
-lint-operator: ## Lint operator
-	@echo "🔍 Linting operator..."
-	@cd operator && uv run ruff check src/ tests/
-
-lint-universal-adapter: ## Lint universal adapter
-	@echo "🔍 Linting universal adapter..."
-	@cd universal-adapter && uv run ruff check src/ tests/
-
-format: format-control-plane format-operator format-universal-adapter ## Format all code
-	@echo "✅ All formatting completed"
-
-format-control-plane: ## Format control plane code
-	@echo "✨ Formatting control plane..."
-	@cd control-plane && uv run ruff format src/ tests/ && uv run ruff check src/ tests/ --fix
-
-format-operator: ## Format operator code
-	@echo "✨ Formatting operator..."
-	@cd operator && uv run ruff format src/ tests/ && uv run ruff check src/ tests/ --fix
-
-format-universal-adapter: ## Format universal adapter code
-	@echo "✨ Formatting universal adapter..."
-	@cd universal-adapter && uv run ruff format src/ tests/ && uv run ruff check src/ tests/ --fix
-
-# Type checking
-type-check: type-check-control-plane type-check-operator type-check-universal-adapter ## Run all type checking
-	@echo "✅ All type checking completed"
-
-type-check-control-plane: ## Type check control plane
-	@echo "🔎 Type checking control plane..."
-	@cd control-plane && uv run mypy --package nimbletools_control_plane
-
-type-check-operator: ## Type check operator
-	@echo "🔎 Type checking operator..."
-	@cd operator && uv run mypy --package nimbletools_core_operator
-
-type-check-universal-adapter: ## Type check universal adapter
-	@echo "🔎 Type checking universal adapter..."
-	@cd universal-adapter && uv run mypy --package nimbletools_universal_adapter
-
-# Quality checks (CI-ready)
-check: lint type-check test ## Run all quality checks
-	@echo "✅ All quality checks passed"
+# Backwards compatibility alias
+check: verify ## Alias for verify (backwards compatibility)
 
 # Docker
-docker-build: docker-build-control-plane docker-build-operator docker-build-universal-adapter ## Build all Docker images
+docker-build: docker-build-control-plane docker-build-operator docker-build-universal-adapter docker-build-rbac-controller ## Build all Docker images
 	@echo "✅ All Docker images built"
 
 docker-build-control-plane: ## Build control plane Docker image
@@ -115,14 +56,37 @@ docker-build-control-plane: ## Build control plane Docker image
 
 docker-build-operator: ## Build operator Docker image
 	@echo "🐳 Building operator Docker image..."
-	@cd operator && docker build -t nimbletools-operator .
+	@cd mcp-operator && docker build -t nimbletools-operator .
 
 docker-build-universal-adapter: ## Build universal adapter Docker image
 	@echo "🐳 Building universal adapter Docker image..."
 	@cd universal-adapter && docker build -t nimbletools-universal-adapter .
 
+docker-build-rbac-controller: ## Build rbac controller Docker image
+	@echo "🐳 Building rbac controller Docker image..."
+	@cd rbac-controller && docker build -t nimbletools-rbac-controller .
+
+docker-dev: docker-dev-control-plane docker-dev-operator docker-dev-universal-adapter docker-dev-rbac-controller ## Build and push all Docker images with dev tag
+	@echo "✅ All Docker images built and pushed with dev tag"
+
+docker-dev-control-plane: ## Build and push control plane Docker image with dev tag
+	@echo "🐳 Building and pushing control plane Docker image with dev tag..."
+	@cd control-plane && docker buildx build --platform linux/amd64,linux/arm64 -t nimbletools/control-plane:dev --push .
+
+docker-dev-operator: ## Build and push operator Docker image with dev tag
+	@echo "🐳 Building and pushing operator Docker image with dev tag..."
+	@cd mcp-operator && docker buildx build --platform linux/amd64,linux/arm64 -t nimbletools/mcp-operator:dev --push .
+
+docker-dev-universal-adapter: ## Build and push universal adapter Docker image with dev tag
+	@echo "🐳 Building and pushing universal adapter Docker image with dev tag..."
+	@cd universal-adapter && docker buildx build --platform linux/amd64,linux/arm64 -t nimbletools/universal-adapter:dev --push .
+
+docker-dev-rbac-controller: ## Build and push rbac controller Docker image with dev tag
+	@echo "🐳 Building and pushing rbac controller Docker image with dev tag..."
+	@cd rbac-controller && docker buildx build --platform linux/amd64,linux/arm64 -t nimbletools/rbac-controller:dev --push .
+
 # Cleanup
-clean: clean-control-plane clean-operator clean-universal-adapter ## Clean all generated files
+clean: clean-control-plane clean-operator clean-universal-adapter clean-rbac-controller ## Clean all generated files
 	@echo "✅ All cleanup completed"
 
 clean-control-plane: ## Clean control plane generated files
@@ -131,20 +95,23 @@ clean-control-plane: ## Clean control plane generated files
 
 clean-operator: ## Clean operator generated files
 	@echo "🧹 Cleaning operator..."
-	@cd operator && $(MAKE) clean
+	@cd mcp-operator && $(MAKE) clean
 
 clean-universal-adapter: ## Clean universal adapter generated files
 	@echo "🧹 Cleaning universal adapter..."
 	@cd universal-adapter && $(MAKE) clean
 
+clean-rbac-controller: ## Clean rbac controller generated files
+	@echo "🧹 Cleaning rbac controller..."
+	@cd rbac-controller && $(MAKE) clean
+
 # Development shortcuts
 dev-setup: install ## Set up development environment
 	@echo "🚀 Development environment ready!"
 	@echo "Available commands:"
-	@echo "  make test       - Run all tests"
-	@echo "  make lint       - Run all linting"
-	@echo "  make format     - Format all code"
-	@echo "  make check      - Run all quality checks"
+	@echo "  make verify     - Run all quality checks"
+	@echo "  make install    - Install all dependencies"
+	@echo "  make build-local - Build Docker images locally"
 
 # Get version from VERSION file
 VERSION := $(shell cat VERSION 2>/dev/null || echo "0.1.0")
@@ -285,3 +252,14 @@ release: check clean-dist check-publish tag publish ## Complete release workflow
 	@echo "2. Check Docker Hub: https://hub.docker.com/r/nimbletools"
 	@echo "3. Check GHCR: https://github.com/NimbleBrainInc/nimbletools-core/pkgs/container/charts%2F$(CHART_NAME)"
 	@echo "4. Test installation: curl -sSL https://raw.githubusercontent.com/NimbleBrainInc/nimbletools-core/refs/heads/main/install.sh | bash"
+
+# Version Management
+update-version: ## Update all version references from VERSION file
+	@echo "📝 Updating all versions from VERSION file..."
+	@./scripts/update-versions.sh
+	@echo "✅ Version update complete"
+
+set-version: ## Set a new version (usage: make set-version VERSION=0.3.0)
+	@echo "Setting version to $(VERSION)..."
+	@echo "$(VERSION)" > VERSION
+	@$(MAKE) update-version

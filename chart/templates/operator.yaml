@@ -20,15 +20,11 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
       - name: operator
-        image: {{ if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{ end }}{{ .Values.operator.image.repository }}:{{ .Chart.AppVersion }}
+        image: {{ if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{ end }}{{ .Values.operator.image.repository }}:{{ .Values.operator.image.tag | default .Chart.AppVersion }}
         imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
         securityContext:
           {{- toYaml .Values.securityContext | nindent 10 }}
         env:
-        - name: NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
         - name: LOG_LEVEL
           value: {{ .Values.operator.config.logLevel }}
         - name: RECONCILE_INTERVAL
@@ -38,9 +34,12 @@ spec:
         - name: METRICS_PORT
           value: {{ .Values.operator.config.metricsPort | quote }}
         - name: UNIVERSAL_ADAPTER_IMAGE
-          value: {{ if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{ end }}{{ .Values.universalAdapter.image.repository }}:{{ .Chart.AppVersion }}
+          value: {{ if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{ end }}{{ .Values.universalAdapter.image.repository }}:{{ .Values.universalAdapter.image.tag | default .Chart.AppVersion }}
         - name: DOMAIN
           value: {{ .Values.global.domain }}
+        # Disable Kopf namespace finalizers to prevent stuck namespaces
+        - name: KOPF_NAMESPACE_FINALIZERS
+          value: "false"
         {{- range .Values.extraEnv }}
         - name: {{ .name }}
           value: {{ .value | quote }}

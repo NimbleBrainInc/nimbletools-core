@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       control-plane: ${{ steps.changes.outputs.control-plane }}
-      operator: ${{ steps.changes.outputs.operator }}
+      mcp-operator: ${{ steps.changes.outputs.mcp-operator }}
       universal_adapter: ${{ steps.changes.outputs.universal_adapter }}
       rbac-controller: ${{ steps.changes.outputs.rbac-controller }}
     steps:
@@ -23,8 +23,8 @@ jobs:
           filters: |
             control-plane:
               - 'control-plane/**'
-            operator:
-              - 'operator/**'
+            mcp-operator:
+              - 'mcp-operator/**'
             universal-adapter:
               - 'universal-adapter/**'
             rbac-controller:
@@ -49,9 +49,9 @@ jobs:
         working-directory: control-plane
         run: uv sync --dev --frozen
 
-      - name: Run CI checks
+      - name: Run verification
         working-directory: control-plane
-        run: make ci-check
+        run: make verify COVERAGE=1
 
       - name: Upload coverage reports
         uses: codecov/codecov-action@v4
@@ -61,11 +61,11 @@ jobs:
           name: control-plane-coverage
           fail_ci_if_error: false
 
-  # Operator CI
-  operator:
+  # MCP Operator CI
+  mcp-operator:
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.operator == 'true'
+    if: needs.changes.outputs.mcp-operator == 'true'
 
     steps:
       - uses: actions/checkout@v5
@@ -77,19 +77,19 @@ jobs:
         run: uv python install 3.13
 
       - name: Install dependencies
-        working-directory: operator
+        working-directory: mcp-operator
         run: uv sync --dev --frozen
 
-      - name: Run CI checks
-        working-directory: operator
-        run: make ci-check
+      - name: Run verification
+        working-directory: mcp-operator
+        run: make verify COVERAGE=1
 
       - name: Upload coverage reports
         uses: codecov/codecov-action@v4
         with:
-          file: ./operator/coverage.xml
-          flags: operator
-          name: operator-coverage
+          file: ./mcp-operator/coverage.xml
+          flags: mcp-operator
+          name: mcp-operator-coverage
           fail_ci_if_error: false
 
   # Universal Adapter CI
@@ -111,9 +111,9 @@ jobs:
         working-directory: universal-adapter
         run: uv sync --dev --frozen
 
-      - name: Run CI checks
+      - name: Run verification
         working-directory: universal-adapter
-        run: make ci-check
+        run: make verify COVERAGE=1
 
       - name: Upload coverage reports
         uses: codecov/codecov-action@v4
@@ -142,9 +142,9 @@ jobs:
         working-directory: rbac-controller
         run: uv sync --dev --frozen
 
-      - name: Run CI checks
+      - name: Run verification
         working-directory: rbac-controller
-        run: make ci-check
+        run: make verify COVERAGE=1
 
       - name: Upload coverage reports
         uses: codecov/codecov-action@v4
@@ -183,10 +183,10 @@ jobs:
           curl -f http://localhost:8080/health
           docker stop test-control-plane
 
-  docker-operator:
+  docker-mcp-operator:
     runs-on: ubuntu-latest
-    needs: [changes, operator]
-    if: needs.changes.outputs.operator == 'true' && github.event_name == 'push'
+    needs: [changes, mcp-operator]
+    if: needs.changes.outputs.mcp-operator == 'true' && github.event_name == 'push'
 
     steps:
       - uses: actions/checkout@v5
@@ -194,21 +194,21 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build Operator Docker image
+      - name: Build MCP Operator Docker image
         uses: docker/build-push-action@v6
         with:
-          context: ./operator
+          context: ./mcp-operator
           push: false
           load: true
-          tags: nimbletools-operator:${{ github.sha }}
-          cache-from: type=gha,scope=operator
-          cache-to: type=gha,mode=max,scope=operator
+          tags: nimbletools-mcp-operator:${{ github.sha }}
+          cache-from: type=gha,scope=mcp-operator
+          cache-to: type=gha,mode=max,scope=mcp-operator
 
-      - name: Test Operator Docker image
+      - name: Test MCP Operator Docker image
         run: |
           # Verify image was built successfully by inspecting it
-          docker image inspect nimbletools-operator:${{ github.sha }}
-          echo "Operator Docker image built successfully"
+          docker image inspect nimbletools-mcp-operator:${{ github.sha }}
+          echo "MCP Operator Docker image built successfully"
           # Note: Cannot run operator container in CI as it requires Kubernetes configuration
 
   # Overall status check - this job will be required for PR merge
@@ -218,11 +218,11 @@ jobs:
       [
         changes,
         control-plane,
-        operator,
+        mcp-operator,
         universal-adapter,
         rbac-controller,
         docker-control-plane,
-        docker-operator,
+        docker-mcp-operator,
       ]
     if: always()
     steps:
@@ -234,22 +234,22 @@ jobs:
               echo "Control plane CI failed"
               exit 1
             fi
-            
+
             if [[ "${{ github.event_name }}" == "push" && "${{ needs.docker-control-plane.result }}" != "success" ]]; then
               echo "Control plane Docker build failed"
               exit 1
             fi
           fi
 
-          # Operator checks
-          if [[ "${{ needs.changes.outputs.operator }}" == "true" ]]; then
-            if [[ "${{ needs.operator.result }}" != "success" ]]; then
-              echo "Operator CI failed"
+          # MCP Operator checks
+          if [[ "${{ needs.changes.outputs.mcp-operator }}" == "true" ]]; then
+            if [[ "${{ needs.mcp-operator.result }}" != "success" ]]; then
+              echo "MCP Operator CI failed"
               exit 1
             fi
-            
-            if [[ "${{ github.event_name }}" == "push" && "${{ needs.docker-operator.result }}" != "success" ]]; then
-              echo "Operator Docker build failed"
+
+            if [[ "${{ github.event_name }}" == "push" && "${{ needs.docker-mcp-operator.result }}" != "success" ]]; then
+              echo "MCP Operator Docker build failed"
               exit 1
             fi
           fi

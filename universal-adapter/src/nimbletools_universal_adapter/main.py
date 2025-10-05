@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 class PackageSpec(BaseModel):
     """Package specification for dynamic installation"""
 
-    type: str  # npm, github, local, or executable
+    type: str  # npm, pypi, github, local, or executable
     source: str  # package name, repo URL, or path
     version: str | None = None
     install_args: list[str] = []
@@ -50,7 +50,7 @@ class ServerConfig(BaseModel):
 class PackageManager:
     """Dynamic package management with memory optimization"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.installed_packages: dict[str, str] = {}
         self.cache_dir = Path("/tmp/npm-cache")
         self.install_dir = Path("/tmp/mcp-packages")
@@ -71,6 +71,8 @@ class PackageManager:
                 success = await self._install_npm_package(package_spec)
             elif package_spec.type == "github":
                 success = await self._install_github_package(package_spec)
+            elif package_spec.type == "pypi":
+                success = await self._install_pypi_package(package_spec)
             elif package_spec.type == "executable":
                 success = await self._verify_executable(package_spec)
             else:
@@ -78,7 +80,10 @@ class PackageManager:
                 return False
 
             if success:
-                self.installed_packages[cache_key] = package_spec.source
+                # Only store if not already stored by the install method
+                # (npm packages store full install path for entry point lookup)
+                if cache_key not in self.installed_packages:
+                    self.installed_packages[cache_key] = package_spec.source
                 logger.info("✅ Package installed successfully: %s", cache_key)
 
             return success
@@ -94,46 +99,113 @@ class PackageManager:
             if spec.version:
                 package_name = f"{package_name}@{spec.version}"
 
-            # Use npx for one-time execution or npm install for persistence
-            if spec.install_args and "--global" in spec.install_args:
-                cmd = ["npm", "install", "-g", package_name]
-            else:
-                # Install locally in temp directory
-                install_path = self.install_dir / spec.source.replace("/", "-")
-                install_path.mkdir(exist_ok=True, parents=True)
-                cmd = ["npm", "install", package_name]
+            # Install locally in temp directory to avoid npx spawn issues
+            install_path = self.install_dir / spec.source.replace("/", "-")
+            install_path.mkdir(exist_ok=True, parents=True)
 
+            # Create directories for npm cache
+            npm_cache = Path("/tmp/npm-cache-user")
+            npm_home = Path("/tmp/home-user")
+            npm_cache.mkdir(exist_ok=True)
+            npm_home.mkdir(exist_ok=True)
+
+            cmd = ["npm", "install", package_name]
             cmd.extend(spec.install_args)
 
             # Set environment to ensure proper permissions for npm cache
+            # Must set HOME to writable directory for read-only filesystem containers
             env = os.environ.copy()
             env.update(
                 {
-                    "NPM_CONFIG_CACHE": "/tmp/npm-cache-user",
-                    "HOME": "/tmp/home-user",
+                    "NPM_CONFIG_CACHE": str(npm_cache),
+                    "HOME": str(npm_home),
+                    # Additional npm config to ensure it uses /tmp
+                    "npm_config_cache": str(npm_cache),
                 }
             )
 
+            logger.info(
+                "Installing npm package with HOME=%s, NPM_CONFIG_CACHE=%s", npm_home, npm_cache
+            )
+            logger.info("Running command: %s", " ".join(cmd))
+
             result = await asyncio.create_subprocess_exec(
                 *cmd,
-                cwd=install_path if "install_path" in locals() else None,
+                cwd=install_path,
+                stdin=asyncio.subprocess.DEVNULL,  # Prevent blocking on stdin
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 env=env,
             )
 
+            logger.info("Subprocess started, waiting for completion...")
             stdout, stderr = await result.communicate()
+            logger.info("Subprocess completed with return code: %d", result.returncode)
 
             if result.returncode == 0:
+                logger.info("NPM install succeeded")
                 logger.debug("NPM install output: %s", stdout.decode())
+                # Store install path for later entry point lookup
+                self.installed_packages[f"{spec.type}:{spec.source}"] = str(install_path)
                 return True
             else:
-                logger.error("NPM install failed: %s", stderr.decode())
+                logger.error("NPM install failed with return code %d", result.returncode)
+                logger.error("NPM install stderr: %s", stderr.decode())
                 return False
 
         except Exception as e:
             logger.error("NPM installation error: %s", e)
             return False
+
+    def get_npm_package_entry_point(self, package_name: str) -> str | None:
+        """Find the entry point for an installed npm package"""
+        try:
+            cache_key = f"npm:{package_name}"
+            install_path = self.installed_packages.get(cache_key)
+            if not install_path:
+                logger.error("Package not installed: %s", package_name)
+                return None
+
+            # Look for package.json in node_modules
+            package_json_path = Path(install_path) / "node_modules" / package_name / "package.json"
+            if not package_json_path.exists():
+                logger.error("package.json not found: %s", package_json_path)
+                return None
+
+            # Parse package.json to find bin entry
+            with package_json_path.open() as f:
+                package_data = json.load(f)
+
+            # Check for bin field
+            if "bin" in package_data:
+                bin_data = package_data["bin"]
+                if isinstance(bin_data, str):
+                    # Single bin entry
+                    entry_point = bin_data
+                elif isinstance(bin_data, dict):
+                    # Multiple bins - use package name or first entry
+                    entry_point = bin_data.get(package_name) or next(iter(bin_data.values()))
+                else:
+                    logger.error("Unexpected bin format in package.json")
+                    return None
+
+                # Construct full path
+                full_path = Path(install_path) / "node_modules" / package_name / entry_point
+                return str(full_path)
+
+            # Fallback: check for main field
+            if "main" in package_data:
+                full_path = (
+                    Path(install_path) / "node_modules" / package_name / package_data["main"]
+                )
+                return str(full_path)
+
+            logger.error("No bin or main entry found in package.json")
+            return None
+
+        except Exception as e:
+            logger.error("Error finding entry point: %s", e)
+            return None
 
     async def _install_github_package(self, spec: PackageSpec) -> bool:
         """Clone and setup GitHub repository"""
@@ -195,7 +267,46 @@ class PackageManager:
             logger.error("Executable verification error: %s", e)
             return False
 
-    def cleanup_packages(self):
+    async def _install_pypi_package(self, spec: PackageSpec) -> bool:
+        """Install Python package via uv pip"""
+        try:
+            package_name = spec.source
+            if spec.version:
+                package_name = f"{package_name}=={spec.version}"
+
+            # Use uv pip install for package installation with --system flag
+            cmd = ["uv", "pip", "install", "--system", package_name]
+            cmd.extend(spec.install_args)
+
+            # Set environment for uv
+            env = os.environ.copy()
+            env.update(
+                {
+                    "UV_CACHE_DIR": "/tmp/uv-cache",
+                }
+            )
+
+            result = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=env,
+            )
+
+            stdout, stderr = await result.communicate()
+
+            if result.returncode != 0:
+                logger.error("PyPI installation failed: %s", stderr.decode())
+                return False
+
+            logger.debug("PyPI install output: %s", stdout.decode())
+            return True
+
+        except Exception as e:
+            logger.error("PyPI installation error: %s", e)
+            return False
+
+    def cleanup_packages(self) -> None:
         """Cleanup installed packages to free memory"""
         try:
             # Clear npm cache
@@ -215,9 +326,9 @@ class PackageManager:
 class UniversalMCPAdapter:
     """Universal adapter for any MCP server with dynamic package management"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.config: ServerConfig | None = None
-        self.process: subprocess.Popen | None = None
+        self.process: subprocess.Popen[str] | None = None
         self.startup_time = time.time()
         self.process_lock = asyncio.Lock()
         self.package_manager = PackageManager()
@@ -226,7 +337,7 @@ class UniversalMCPAdapter:
         # Load configuration
         self._load_config()
 
-    def _load_config(self):
+    def _load_config(self) -> None:
         """Load universal server configuration from environment variables"""
         try:
             # Read configuration from environment variables set by the operator
@@ -273,13 +384,13 @@ class UniversalMCPAdapter:
             )
 
             logger.info("✅ Loaded universal configuration for %s", self.config.name)
-            logger.info("📁 Executable: %s %s", executable, ' '.join(args))
+            logger.info("📁 Executable: %s %s", executable, " ".join(args))
             logger.info("📁 Working directory: %s", working_dir)
             logger.info(
                 "📋 Server capabilities: tools=%d, resources=%d, prompts=%d",
-                len(self.capabilities['tools']),
-                len(self.capabilities['resources']),
-                len(self.capabilities['prompts'])
+                len(self.capabilities["tools"]),
+                len(self.capabilities["resources"]),
+                len(self.capabilities["prompts"]),
             )
 
         except Exception as e:
@@ -290,19 +401,15 @@ class UniversalMCPAdapter:
         """Get environment variables that should be forwarded to the MCP server"""
         forwarded_vars = {}
 
-        # Forward API keys and configuration
-        env_patterns = [
-            "NPS_API_KEY",
-            "API_KEY",
-            "OPENAI_API_KEY",
-            "LOG_LEVEL",
-            "NODE_ENV",
-            "DEBUG",
-        ]
-
-        for pattern in env_patterns:
-            if pattern in os.environ:
-                forwarded_vars[pattern] = os.environ[pattern]
+        # Read MCP_ENV_VARS for explicit list of variables to forward
+        env_vars_str = os.getenv("MCP_ENV_VARS", "[]")
+        try:
+            env_var_names = json.loads(env_vars_str)
+            for var_name in env_var_names:
+                if var_name in os.environ:
+                    forwarded_vars[var_name] = os.environ[var_name]
+        except json.JSONDecodeError:
+            logger.warning("Failed to parse MCP_ENV_VARS: %s", env_vars_str)
 
         # Also forward any environment variable starting with MCP_ENV_
         for key, value in os.environ.items():
@@ -316,14 +423,23 @@ class UniversalMCPAdapter:
     def _detect_package_spec(self, executable: str, args: list[str]) -> PackageSpec | None:
         """Detect package requirements from executable and args"""
         if executable == "npx" and args:
-            # Handle npx -y package-name format - no installation needed, npx handles it
-            if "-y" in args:
-                # npx -y means auto-install, so we just verify npx is available
-                return PackageSpec(type="executable", source="npx")
+            # Extract package name from npx command
+            # Handle formats: npx -y package-name, npx package-name
+            package_name = None
+            for _i, arg in enumerate(args):
+                if not arg.startswith("-"):
+                    package_name = arg
+                    break
 
-            # Handle direct package name
-            if args and not args[0].startswith("-"):
-                return PackageSpec(type="npm", source=args[0], install_args=[])
+            if package_name:
+                # Return npm package spec to trigger installation
+                return PackageSpec(type="npm", source=package_name, install_args=[])
+
+        elif executable == "uvx" and args:
+            # Handle uvx package-name format
+            # uvx automatically installs and runs, similar to npx -y
+            # Just verify uvx is available
+            return PackageSpec(type="executable", source="uvx")
 
         elif executable.startswith("npm") and "install" in args:
             # Direct npm install command
@@ -348,7 +464,7 @@ class UniversalMCPAdapter:
         """Check if server supports tools based on capabilities"""
         return len(self.capabilities.get("tools", [])) > 0
 
-    async def initialize(self):
+    async def initialize(self) -> None:
         """Initialize the adapter with package installation"""
         if not self.config:
             raise RuntimeError("Configuration not loaded")
@@ -357,20 +473,39 @@ class UniversalMCPAdapter:
         package_spec = self._detect_package_spec(self.config.executable, self.config.args)
         if package_spec:
             logger.info(
-                "📦 Detected package requirement: %s - %s",
-                package_spec.type,
-                package_spec.source
+                "📦 Detected package requirement: %s - %s", package_spec.type, package_spec.source
             )
             success = await self.package_manager.install_package(package_spec)
             if not success:
                 raise RuntimeError(f"Failed to install required package: {package_spec.source}")
+
+            # If npx, rewrite command to use node directly to avoid child process spawn issues
+            if self.config.executable == "npx" and package_spec.type == "npm":
+                await self._rewrite_npx_to_node(package_spec.source)
 
         # Start the MCP server process
         await self._start_process()
 
         logger.info("🚀 Universal adapter initialized for %s", self.config.name)
 
-    async def _start_process(self):
+    async def _rewrite_npx_to_node(self, package_name: str) -> None:
+        """Rewrite npx command to use node directly"""
+        if not self.config:
+            return
+
+        entry_point = self.package_manager.get_npm_package_entry_point(package_name)
+        if not entry_point:
+            raise RuntimeError(f"Could not find entry point for npm package: {package_name}")
+
+        logger.info("📝 Rewriting npx command to use node directly: %s", entry_point)
+
+        # Update config to use node instead of npx
+        self.config.executable = "node"
+        self.config.args = [entry_point]
+
+        logger.info("✅ Command rewritten: node %s", entry_point)
+
+    async def _start_process(self) -> None:
         """Start the universal MCP server process"""
         if not self.config:
             raise RuntimeError("No configuration available")
@@ -379,13 +514,13 @@ class UniversalMCPAdapter:
         env = os.environ.copy()
         env.update(self.config.environment)
 
-        # Fix npm cache permissions for npx commands
-        if self.config.executable == "npx":
+        # Fix UV cache permissions for uvx commands (in writable /tmp)
+        if self.config.executable == "uvx":
             env.update(
                 {
-                    "NPM_CONFIG_CACHE": "/tmp/npm-cache-user",
-                    "HOME": "/tmp/home-user",
-                    "npm_config_cache": "/tmp/npm-cache-user",
+                    "UV_CACHE_DIR": "/tmp/uv-cache",
+                    "UV_TOOL_DIR": "/tmp/uv-tools",
+                    "UV_PYTHON_INSTALL_DIR": "/tmp/uv-python",
                 }
             )
 
@@ -403,22 +538,19 @@ class UniversalMCPAdapter:
                 cwd=self.config.working_dir,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,  # Discard stderr to prevent blocking
                 text=True,
                 env=env,
-                bufsize=0,  # Unbuffered for real-time communication
+                bufsize=0,  # Unbuffered for real-time stdio communication
             )
 
             # Give the process a moment to start
             await asyncio.sleep(3)
 
-            if self.process.poll() is None:
+            if self.process and self.process.poll() is None:
                 logger.info("✅ Universal MCP server started successfully")
             else:
-                stderr_output = ""
-                if self.process.stderr:
-                    stderr_output = self.process.stderr.read()
-                raise RuntimeError(f"Universal MCP server failed to start. Stderr: {stderr_output}")
+                raise RuntimeError("Universal MCP server failed to start")
 
         except Exception as e:
             logger.error("❌ Failed to start universal MCP server: %s", e)
@@ -441,19 +573,23 @@ class UniversalMCPAdapter:
                 request_json = json.dumps(message) + "\n"
                 logger.debug("📤 Sending: %s", request_json.strip())
 
+                if self.process.stdin is None or self.process.stdout is None:
+                    raise RuntimeError("Process stdin/stdout not available")
+
                 self.process.stdin.write(request_json)
                 self.process.stdin.flush()
 
-                # Read response with timeout
+                # Read response with timeout (60s for initialize, 30s for others)
+                timeout = 60.0 if message.get("method") == "initialize" else 30.0
                 response_line = await asyncio.wait_for(
-                    asyncio.to_thread(self.process.stdout.readline), timeout=30.0
+                    asyncio.to_thread(self.process.stdout.readline), timeout=timeout
                 )
 
                 if not response_line:
                     raise RuntimeError("No response from stdio MCP server")
 
                 logger.debug("📥 Received: %s", response_line.strip())
-                response = json.loads(response_line.strip())
+                response: dict[str, Any] = json.loads(response_line.strip())
                 return response
 
             except TimeoutError:
@@ -466,7 +602,35 @@ class UniversalMCPAdapter:
                 logger.error("❌ Stdio communication failed: %s", e)
                 raise RuntimeError(f"Communication failed: {e}") from e
 
-    async def _restart_process(self):
+    async def send_notification(self, message: dict[str, Any]) -> None:
+        """Send JSON-RPC notification to stdio MCP server (no response expected)"""
+        async with self.process_lock:
+            if not self.process or self.process.poll() is not None:
+                logger.warning("🔄 Process not running, attempting restart...")
+                await self._restart_process()
+
+                if not self.process or self.process.poll() is not None:
+                    raise RuntimeError(
+                        "Universal MCP server process is not running and restart failed"
+                    )
+
+            try:
+                # Send JSON-RPC notification (notifications have no id field)
+                notification_json = json.dumps(message) + "\n"
+                logger.debug("📤 Sending notification: %s", notification_json.strip())
+
+                if self.process.stdin is None:
+                    raise RuntimeError("Process stdin not available")
+
+                self.process.stdin.write(notification_json)
+                self.process.stdin.flush()
+                # Notifications don't expect a response, so we're done
+
+            except Exception as e:
+                logger.error("❌ Notification send failed: %s", e)
+                raise RuntimeError(f"Notification failed: {e}") from e
+
+    async def _restart_process(self) -> None:
         """Restart universal MCP server process if it fails"""
         logger.warning("🔄 Restarting universal MCP server process")
 
@@ -484,9 +648,15 @@ class UniversalMCPAdapter:
 
     def is_healthy(self) -> bool:
         """Check if the stdio process is healthy"""
-        return self.process is not None and self.process.poll() is None
+        if self.process is None:
+            return False
+        exit_code = self.process.poll()
+        if exit_code is not None:
+            logger.error("❌ Process exited with code: %s", exit_code)
+            return False
+        return True
 
-    def cleanup(self):
+    def cleanup(self) -> None:
         """Cleanup resources and installed packages"""
         # Stop the MCP server process
         if self.process:
@@ -512,7 +682,7 @@ adapter: UniversalMCPAdapter | None = None
 
 
 @app.on_event("startup")
-async def startup_event():
+async def startup_event() -> None:
     """Initialize universal adapter on startup"""
     global adapter  # noqa: PLW0603
     try:
@@ -525,14 +695,14 @@ async def startup_event():
 
 
 @app.on_event("shutdown")
-async def shutdown_event():
+async def shutdown_event() -> None:
     """Cleanup on shutdown"""
     if adapter is not None:
         adapter.cleanup()
 
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> dict[str, Any]:
     """Health check endpoint"""
     if not adapter or not adapter.config:
         raise HTTPException(status_code=503, detail="Universal adapter not initialized")
@@ -577,10 +747,8 @@ def _create_error_response(request_id: str | None, code: int, message: str) -> d
     }
 
 
-
-
-@app.post("/mcp")
-async def mcp_endpoint(request: Request):
+@app.post("/mcp", response_model=None)
+async def mcp_endpoint(request: Request) -> JSONResponse | Response:
     """MCP protocol endpoint - handles all JSON-RPC methods"""
     if not adapter:
         raise HTTPException(status_code=503, detail="Adapter not initialized")
@@ -592,7 +760,10 @@ async def mcp_endpoint(request: Request):
 
         logger.info("🔄 MCP request: %s (repr: %r)", method, method)
 
-        return await _route_method(request_data, adapter)
+        result = await _route_method(request_data, adapter)
+        if isinstance(result, Response):
+            return result
+        return JSONResponse(content=result)
 
     except json.JSONDecodeError:
         return JSONResponse(
@@ -618,14 +789,27 @@ async def _route_method(
     method = request_data.get("method", "unknown")
     request_id = request_data.get("id")
 
-    # Handle initialize method locally (don't forward to stdio server)
+    # Handle initialize method - forward to subprocess and return its response
     if method == "initialize":
-        return await _handle_initialize(request_data, adapter)
+        logger.info("🔄 Forwarding initialize to stdio server")
+        try:
+            response = await adapter.send_request(request_data)
+            logger.info("✅ Initialize completed successfully")
+            return response
+        except Exception as e:
+            logger.error("❌ Failed to forward initialize: %s", e)
+            return _create_error_response(request_id, -32603, f"Initialize failed: {e!s}")
 
-    # Handle notifications (don't forward, no response needed)
+    # Handle notifications - forward to subprocess (no response expected from subprocess)
     if method in ["notifications/initialized", "initialized", "notifications/cancelled"]:
-        logger.info("✅ MCP notification handled locally - method: %s", method)
-        return Response(status_code=200)
+        logger.info("🔔 Forwarding notification to stdio server: %s", method)
+        try:
+            # Send notification to subprocess (notifications have no id and expect no response)
+            await adapter.send_notification(request_data)
+            return Response(status_code=200)
+        except Exception as e:
+            logger.error("❌ Failed to forward notification '%s': %s", method, e)
+            return Response(status_code=200)  # Still return 200 as notifications don't error
 
     # Handle capability-based methods - always forward to underlying server
     if method.startswith(("resources/", "prompts/", "tools/")):
@@ -653,7 +837,7 @@ async def _handle_initialize(
     logger.info("🤝 Initializing MCP connection - Client: %s", client_info)
 
     # Build dynamic capabilities based on server configuration
-    server_capabilities = {}
+    server_capabilities: dict[str, Any] = {}
     if adapter._supports_tools():
         server_capabilities["tools"] = {}
     if adapter._supports_resources():
@@ -667,7 +851,10 @@ async def _handle_initialize(
         "result": {
             "protocolVersion": "2024-11-05",
             "capabilities": server_capabilities,
-            "serverInfo": {"name": adapter.config.name, "version": "3.0.0"},
+            "serverInfo": {
+                "name": adapter.config.name if adapter.config else "unknown",
+                "version": "3.0.0",
+            },
         },
     }
 

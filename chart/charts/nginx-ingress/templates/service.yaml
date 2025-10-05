@@ -1,0 +1,40 @@
+{{- if .Values.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/part-of: ingress-nginx
+    app.kubernetes.io/component: controller
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+spec:
+  type: {{ .Values.controller.service.type }}
+  {{- if eq .Values.controller.service.type "NodePort" }}
+  externalTrafficPolicy: Local
+  {{- end }}
+  ports:
+  - appProtocol: http
+    name: http
+    port: 80
+    protocol: TCP
+    targetPort: http
+    {{- if and (eq .Values.controller.service.type "NodePort") .Values.controller.service.nodePorts.http }}
+    nodePort: {{ .Values.controller.service.nodePorts.http }}
+    {{- end }}
+  - appProtocol: https
+    name: https
+    port: 443
+    protocol: TCP
+    targetPort: https
+    {{- if and (eq .Values.controller.service.type "NodePort") .Values.controller.service.nodePorts.https }}
+    nodePort: {{ .Values.controller.service.nodePorts.https }}
+    {{- end }}
+  selector:
+    app.kubernetes.io/name: ingress-nginx
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: controller
+{{- end }}

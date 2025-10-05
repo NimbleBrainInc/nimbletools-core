@@ -8,7 +8,7 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-CLUSTER_NAME="${CLUSTER_NAME:-nimbletools-dev}"
+CLUSTER_NAME="${CLUSTER_NAME:-nimbletools-quickstart}"
 
 log_info() {
     echo -e "${BLUE}[INFO]${NC} $1"
@@ -34,10 +34,18 @@ main() {
     
     # Create cluster with port mapping and disable traefik (we use nginx-ingress instead)
     log_info "Creating k3d cluster with nginx-ingress for direct domain access..."
+    
+    # Create cluster with port mapping and disable traefik (we use nginx-ingress instead)
+    # Add memory allocation to prevent OOMKilled issues with ingress controller
     k3d cluster create "$CLUSTER_NAME" \
         --port "80:80@loadbalancer" \
         --port "443:443@loadbalancer" \
         --k3s-arg "--disable=traefik@server:0" \
+        --k3s-arg "--kubelet-arg=max-pods=110@server:*" \
+        --servers 1 \
+        --agents 1 \
+        --servers-memory 2g \
+        --agents-memory 2g \
         --wait
     
     log_success "k3d cluster '$CLUSTER_NAME' created successfully!"

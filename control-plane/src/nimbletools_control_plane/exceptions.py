@@ -189,12 +189,34 @@ def convert_to_http_exception(error: Exception, default_status_code: int = 500) 
         return error
 
     if isinstance(error, KubernetesOperationError):
-        if error.api_exception and error.api_exception.status == 404:
-            return HTTPException(status_code=404, detail=f"Resource not found: {error.message}")
-        elif error.api_exception and error.api_exception.status in (400, 401, 403):
-            return HTTPException(status_code=error.api_exception.status, detail=error.message)
+        api_exc = error.api_exception
+        if api_exc:
+            if api_exc.status == 404:
+                status_code = 404
+                detail = f"Resource not found: {error.message}"
+            elif api_exc.status in (400, 401, 403):
+                status_code = api_exc.status
+                detail = error.message
+            else:
+                status_code = 500
+                detail = f"Internal server error: {error.message}"
         else:
-            return HTTPException(status_code=500, detail=f"Internal server error: {error.message}")
+            status_code = 500
+            detail = f"Internal server error: {error.message}"
+        return HTTPException(status_code=status_code, detail=detail)
+
+    # Handle raw Kubernetes ApiException
+    if isinstance(error, ApiException):
+        if error.status == 404:
+            status_code = 404
+            detail = "Resource not found"
+        elif error.status in (400, 401, 403):
+            status_code = error.status
+            detail = str(error.reason)
+        else:
+            status_code = 500
+            detail = f"Kubernetes API error: {error.reason}"
+        return HTTPException(status_code=status_code, detail=detail)
 
     if isinstance(error, ControlPlaneError):
         return HTTPException(

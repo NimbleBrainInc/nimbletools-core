@@ -24,17 +24,37 @@ format: ## Format code with ruff
 	uv run ruff check src/ tests/ --fix
 
 type-check: ## Run type checking with mypy
-	uv run mypy --package nimbletools_universal_adapter
+	uv run python -m mypy --package nimbletools_universal_adapter
 
 # Testing
 test: ## Run tests with pytest
-	uv run pytest tests/ -v
+	uv run python -m pytest tests/ -v
 
 test-cov: ## Run tests with coverage report
-	uv run pytest tests/ --cov=nimbletools_universal_adapter --cov-report=html --cov-report=term-missing
+	uv run python -m pytest tests/ --cov=nimbletools_universal_adapter --cov-report=html --cov-report=term-missing
 
 # Quality checks (CI-ready)
 check: lint type-check test ## Run all quality checks
+
+# Combined verify target for CI/CD
+verify: ## Run all verification steps (format, lint, type-check, test) - use COVERAGE=1 for coverage reports
+	@echo "🔍 Running full verification suite..."
+	@echo "================================"
+	@echo "✨ Formatting code..."
+	uv run ruff format src/ tests/
+	uv run ruff check src/ tests/ --fix
+	@echo "🔍 Running linting..."
+	uv run ruff check src/ tests/
+	@echo "🏷️  Running type checking..."
+	uv run python -m mypy --package nimbletools_universal_adapter
+	@echo "🧪 Running tests..."
+ifdef COVERAGE
+	uv run python -m pytest tests/ --cov=nimbletools_universal_adapter --cov-report=xml --cov-report=term-missing
+else
+	uv run python -m pytest tests/ -v
+endif
+	@echo ""
+	@echo "✅ All verification steps passed!"
 
 # Development server
 run: ## Run development server
