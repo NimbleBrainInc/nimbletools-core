@@ -8,50 +8,53 @@ Transform any MCP tool into a scalable, auto-scaling service without rewriting c
 
 **Prerequisites:**
 
-- **Kubernetes cluster** (we recommend k3d for local development)
 - **Helm 3.0+** for package management
-- **kubectl** configured for your cluster
-
-**Need a local cluster?** Set up k3d:
-
-```bash
-# Install k3d for local Kubernetes cluster
-curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
-
-# Create local cluster
-k3d cluster create nimbletools-local --wait
-```
-
-**Verify you're ready:**
-
-```bash
-kubectl cluster-info  # Should show cluster info
-helm version         # Should show Helm 3.0+
-```
+- **k3d** for local Kubernetes cluster (automatic setup)
 
 ## Installation
 
 ### Step 1: Install the Platform
 
 ```bash
+# One command gets you running (creates local cluster if needed)
 curl -sSL https://raw.githubusercontent.com/NimbleBrainInc/nimbletools-core/main/install.sh | bash
 ```
 
 **What just happened?**
 
-- ✅ MCP Operator deployed and managing services
-- ✅ REST API ready for service management
-- ✅ Custom Resource Definition installed
-- ✅ Everything verified and working
+- ✅ Local Kubernetes cluster created (k3d-nimbletools-quickstart)
+- ✅ NimbleTools operator deployed and running
+- ✅ REST API available for service management
+- ✅ Ready to deploy your first MCP service
 
-### Step 2: Install the CLI
+### Step 2: Verify Installation
+
+```bash
+# Switch to the cluster context
+kubectl config use-context k3d-nimbletools-quickstart
+
+# Set namespace for convenience
+kubectl config set-context --current --namespace=nimbletools-system
+
+# Check that all pods are running
+kubectl get pods
+
+# Expected output:
+# NAME                                                READY   STATUS    RESTARTS   AGE
+# nimbletools-core-control-plane-64b889fbdb-xxxxx     1/1     Running   0          2m
+# nimbletools-core-control-plane-64b889fbdb-xxxxx     1/1     Running   0          2m
+# nimbletools-core-operator-7bf4f9f667-xxxxx          1/1     Running   0          2m
+# nimbletools-core-rbac-controller-56f67c95dc-xxxxx   1/1     Running   0          2m
+```
+
+### Step 3: Install the CLI (Optional)
 
 ```bash
 # Install ntcli (NimbleTools CLI)
 npm install -g @nimbletools/ntcli
 ```
 
-### Step 3: Create Your First Workspace
+### Step 4: Create Your First Workspace
 
 ```bash
 # Create a workspace
@@ -69,7 +72,7 @@ ntcli ws use myfirstworkspace
    💡 Workspace saved locally for easy switching!
 ```
 
-### Step 4: Deploy Your First Service
+### Step 5: Deploy Your First Service
 
 ```bash
 # Deploy the echo MCP server
@@ -91,7 +94,7 @@ ntcli srv deploy ai.nimbletools/echo
 Workspace: myfirstworkspace (7b545ac8-48f8-4b5f-8af8-1c3ff112d755)
 ```
 
-### Step 5: Verify Your Service
+### Step 6: Verify Your Service
 
 ```bash
 # List all servers in your workspace
@@ -333,7 +336,7 @@ ntcli ws delete myfirstworkspace
 ./scripts/uninstall.sh --remove-crd --remove-namespace
 
 # Or delete the entire cluster if using k3d
-k3d cluster delete nimbletools-local
+k3d cluster delete nimbletools-quickstart
 ```
 
 ## What You Just Built

@@ -26,61 +26,60 @@ The MCP ecosystem has powerful tools but inconsistent deployment patterns. Nimbl
 **Prerequisites:**
 
 - **Helm 3.0+** for package management
-- **kubectl** configured for your cluster **OR**
-- **k3d** for automatic local cluster creation
+- **k3d** for local Kubernetes cluster (automatic setup)
 
 **Installation:**
 
 ```bash
 # One command gets you running (creates local cluster if needed)
 curl -sSL https://raw.githubusercontent.com/NimbleBrainInc/nimbletools-core/refs/heads/main/install.sh | bash
-
-# Configure local domains for API access  
-echo "127.0.0.1 api.nimbletools.local mcp.nimbletools.local" | sudo tee -a /etc/hosts
-```
-
-**Alternative - Manual Setup:**
-
-```bash
-# Install k3d for local Kubernetes cluster
-curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
-
-# Create local cluster
-k3d cluster create nimbletools-demo --wait
 ```
 
 **What just happened?**
 
-- ✅ Kubernetes operator deployed and running
+- ✅ Local Kubernetes cluster created (k3d-nimbletools-quickstart)
+- ✅ NimbleTools operator deployed and running
 - ✅ REST API available for service management
 - ✅ Ready to deploy your first MCP service
 
 **Verify it worked:**
 
 ```bash
-kubectl get pods -n nimbletools-system
-# Should show operator and API pods running
+# Switch to the cluster context
+kubectl config use-context k3d-nimbletools-quickstart
+
+# Set namespace for convenience
+kubectl config set-context --current --namespace=nimbletools-system
+
+# Check that all pods are running
+kubectl get pods
+
+# Expected output:
+# NAME                                                READY   STATUS    RESTARTS   AGE
+# nimbletools-core-control-plane-64b889fbdb-xxxxx     1/1     Running   0          2m
+# nimbletools-core-control-plane-64b889fbdb-xxxxx     1/1     Running   0          2m
+# nimbletools-core-operator-7bf4f9f667-xxxxx          1/1     Running   0          2m
+# nimbletools-core-rbac-controller-56f67c95dc-xxxxx   1/1     Running   0          2m
 ```
 
-**Option 1: Deploy from the Community Registry**
+**Deploy your first MCP service:**
 
 ```bash
-# Add the community registry (dozens of ready-to-use services)
-./scripts/register-community-registry.sh
+# Fetch the echo server definition from the registry
+curl https://registry.nimbletools.ai/v0/servers/ai.nimblebrain%2Fecho > echo-server.json
 
-# Browse available services via API
-curl http://api.nimbletools.local/v1/registry/servers
+# Create a workspace
+curl -X POST http://api.nimbletools.dev/v1/workspaces \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-workspace", "description": "My first workspace"}'
 
-# Deploy directly from the registry
-# (Services come pre-configured with best practices)
-```
+# Deploy the echo server
+curl -X POST http://api.nimbletools.dev/v1/workspaces/my-workspace/servers \
+  -H "Content-Type: application/json" \
+  -d @echo-server.json
 
-**Option 2: Deploy your own service:**
-
-```bash
-# NOTE: remember to create workspace with CLI!
-kubectl apply -f examples-everything-mcp.yaml
-EOF
+# Verify the service is running
+kubectl get pods -n ws-my-workspace
 ```
 
 **Success!** 🎉 You now have a production MCP service that scales and integrates with any MCP client.
@@ -98,8 +97,6 @@ EOF
 - Developers can create once, deploy everywhere
 
 **Common MCP tools:** File browsers, database clients, API integrations, calculators, code analyzers, system monitors.
-
-👉 **Next:** [Try our getting started examples](examples/README.md)
 
 ### ⚡ Experienced with MCP?
 
@@ -158,44 +155,49 @@ Local development with k3d, hot-reload, comprehensive examples and documentation
 
 **Turn service discovery from hunting to browsing**
 
-Instead of hunting for MCP services across GitHub repos and documentation, browse curated collections of ready-to-deploy services.
+Instead of hunting for MCP services across GitHub repos and documentation, browse curated collections of ready-to-deploy services from the NimbleTools Registry.
 
 ```bash
-# Add the community registry
-./scripts/register-community-registry.sh
+# Browse all available services
+curl https://registry.nimbletools.ai/v0/servers | jq '.servers[].name'
 
-# Browse ready-to-use services
-curl http://api.nimbletools.local/v1/registry/servers | jq '.servers[].name'
+# Get details for a specific server
+curl https://registry.nimbletools.ai/v0/servers/ai.nimblebrain%2Fecho
 
 # Deploy any service instantly
-kubectl create -f registry-community/web-scraper.yaml
+curl https://registry.nimbletools.ai/v0/servers/ai.nimbletools%2Fecho > echo-server.json
+curl -X POST http://api.nimbletools.dev/v1/workspaces/my-workspace/servers \
+  -H "Content-Type: application/json" \
+  -d @echo-server.json
 ```
 
-**What you get:**
+**Available in the registry:**
+
+- `ai.nimbletools/echo` - Testing and debugging tool
+- `ai.nimbletools/finnhub` - Financial market data API
+- `ai.nimbletools/github` - GitHub integration (repos, PRs, issues)
+- `ai.nimbletools/postgres-mcp` - PostgreSQL database access
+- `ai.nimbletools/tavily-mcp` - Web search and extraction
+- `ai.nimbletools/nationalparks-mcp` - US National Parks data
+- And more...
+
+**Registry features:**
 
 - **Tested Services:** Every service is pre-configured and tested
 - **Best Practices:** Proper security, scaling, and monitoring built-in
-- **One-Click Deploy:** No YAML writing, just select and deploy
-- **Community Driven:** Share your services, discover what others built
+- **API Access:** Browse and query servers programmatically
+- **Full Documentation:** Complete API docs at [registry.nimbletools.ai/docs](https://registry.nimbletools.ai/docs)
 
-#### Create Your Own Registry
+#### Publishing Your Own Servers
 
-**For Teams & Organizations:** Create a private registry with your custom MCP services.
+**For Teams & Organizations:** Publish your custom MCP services to your own registry or contribute to the community registry.
 
-```bash
-# Fork the registry template
-git clone https://github.com/NimbleBrainInc/nimbletools-mcp-registry.git my-company-registry
-cd my-company-registry
+See the full documentation at [registry.nimbletools.ai/docs](https://registry.nimbletools.ai/docs) for:
 
-# Add your services to registry.yaml
-# Follow the format in the community registry
-
-# Host on GitHub Pages, S3, or any web server
-git push origin main  # If using GitHub Pages
-
-# Register with your NimbleTools Core instance
-./scripts/register-community-registry.sh --registry-url https://my-company.github.io/my-company-registry/registry.yaml
-```
+- Server definition schema
+- Publishing requirements
+- Validation and testing
+- Registry API reference
 
 **Use cases:**
 
@@ -203,6 +205,8 @@ git push origin main  # If using GitHub Pages
 - **Team-Specific Tools:** Department-specific MCP services and configurations
 - **Compliance & Security:** Services that meet your organization's security requirements
 - **Custom Business Logic:** Proprietary MCP services for internal processes
+
+**Learn more:** [NimbleTools Registry](https://registry.nimbletools.ai) | [API Documentation](https://registry.nimbletools.ai/docs) | [GitHub Repository](https://github.com/NimbleBrainInc/mcp-registry)
 
 ### 🖥️ **ntcli: Your Command-Line Companion**
 
@@ -244,7 +248,7 @@ ntcli registry search database
 - **Developer Workflows:** Quick service management from the terminal
 - **Operations Teams:** Bulk operations and scripting
 
-**Learn more:** [ntcli Documentation](https://docs.nimblebrain.ai/ntcli) | [GitHub Repository](https://github.com/NimbleBrainInc/ntcli)
+**Learn more:** [GitHub Repository](https://github.com/NimbleBrainInc/ntcli)
 
 ## Installation Options
 
@@ -274,43 +278,6 @@ cd nimbletools-core
 ./scripts/dev-setup.sh
 ```
 
-## Common Use Cases
-
-### Share Team Tools
-
-Deploy your team's internal MCP tools as services that everyone can access:
-
-```bash
-# Deploy a database query tool
-kubectl apply -f examples/db-query-mcp.yaml
-
-# Now any team member can query databases via MCP clients
-```
-
-### Serverless MCP Services
-
-Perfect for tools that are used sporadically but need to be always available:
-
-```yaml
-spec:
-  replicas: 0 # Scales to zero when not in use
-  scaling:
-    minReplicas: 0
-    maxReplicas: 10
-```
-
-### Legacy Tool Integration
-
-Have a valuable command-line tool that you want to make available via HTTP?
-
-```yaml
-spec:
-  deployment:
-    type: stdio
-    executable: "/usr/local/bin/legacy-tool"
-    args: ["--config", "/etc/config.json"]
-```
-
 ## API Access
 
 Once installed, access the management API:
@@ -324,38 +291,6 @@ curl http://api.nimbletools.dev/api/v1/workspaces/default/servers
 
 # API documentation
 open http://api.nimbletools.dev/docs
-```
-
-## Examples & Templates
-
-- **[Calculator Service](examples/calculator/)** - Simple HTTP-based MCP service
-- **[File Browser](examples/file-browser/)** - stdio-based tool with universal adapter
-- **[Database Query](examples/db-query/)** - Production-ready service with authentication
-- **[Custom Development](examples/custom-service/)** - Build your own MCP service
-
-## Production Deployment
-
-### Prerequisites
-
-- **Kubernetes 1.20+** with RBAC enabled (we recommend k3d for local development)
-- **Helm 3.0+** for package management
-- **Ingress Controller** (nginx, traefik, etc.) for external access
-
-### Monitoring & Observability
-
-```bash
-# Install with monitoring enabled
-./install.sh --monitoring-enabled
-
-# View operator metrics
-kubectl port-forward service/nimbletools-core-metrics 9090:9090
-```
-
-### Security & Compliance
-
-```bash
-# Install with enterprise security
-./install.sh --auth-provider enterprise --network-policies --pod-security-standards
 ```
 
 ## Troubleshooting
@@ -404,7 +339,7 @@ curl http://api.nimbletools.ai/health
 
 ## Community & Support
 
-- 💬 **[Discord Community](https://www.nimbletools.ai/discord?utm_source=github&utm_medium=readme&utm_campaign=nimbletools-core&utm_content=community-section)**
+- 💬 **[Discord Community](https://www.nimblebrain.ai/discord?utm_source=github&utm_medium=readme&utm_campaign=nimbletools-core&utm_content=community-section)**
 - 🐛 **[GitHub Issues](https://github.com/NimbleBrainInc/nimbletools-core/issues)**
 - 📋 **[Discussions](https://github.com/NimbleBrainInc/nimbletools-core/discussions)**
 
@@ -421,19 +356,8 @@ We welcome contributions! Whether you're fixing bugs, adding features, or improv
 ```bash
 git clone https://github.com/NimbleBrainInc/nimbletools-core.git
 cd nimbletools-core
-./scripts/dev-setup.sh
+./redeploy.sh
 ```
-
-## Status & Roadmap
-
-**Current Status:** Beta - actively used in production environments with ongoing improvements
-
-**Coming Soon:**
-
-- Enhanced auto-scaling policies
-- Built-in MCP registry integration
-- Advanced monitoring and alerting
-- Multi-cluster federation support
 
 ## License
 
