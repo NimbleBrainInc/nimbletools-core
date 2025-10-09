@@ -64,3 +64,12 @@ terraform.tfstate.backup
 *.tfvars
 *.tfplan
 *.tfplan.*
+
+# Coverage reports
+coverage.xml
+*.coverage
+.coverage
+htmlcov/
+.pytest_cache/
+coverage/
+*.cover
