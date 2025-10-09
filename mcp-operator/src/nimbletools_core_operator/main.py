@@ -303,8 +303,7 @@ class CoreMCPOperator:
             V1EnvVar(name="MCP_ENV_VARS", value=json.dumps(env_var_names)),
             V1EnvVar(name="PORT", value=str(port)),
             *self._create_env_vars_from_environment(spec.get("environment", {})),
-            *self._create_env_vars_from_packages(packages),
-            *self._create_credential_env_vars(packages, namespace),
+            *self._create_env_vars_from_packages(packages, namespace),
         ]
 
         return V1Deployment(
@@ -448,8 +447,7 @@ class CoreMCPOperator:
                                     *self._create_env_vars_from_environment(
                                         spec.get("environment", {})
                                     ),
-                                    *self._create_env_vars_from_packages(spec.get("packages", [])),
-                                    *self._create_credential_env_vars(
+                                    *self._create_env_vars_from_packages(
                                         spec.get("packages", []), namespace
                                     ),
                                 ],
@@ -519,33 +517,16 @@ class CoreMCPOperator:
 
         return args
 
-    def _create_env_vars_from_packages(self, packages: list[dict[str, Any]]) -> list[V1EnvVar]:
-        """Create environment variables from MCP server packages"""
-        env_vars = []
-
-        for package in packages:
-            env_variables = package.get("environmentVariables", [])
-            for env_var in env_variables:
-                name = env_var.get("name")
-                if not name:
-                    continue
-
-                # If it's a secret, we'll handle it in _create_credential_env_vars
-                # Default to False if isSecret is not specified for third-party compatibility
-                if env_var.get("isSecret", False):
-                    continue
-
-                # Use provided value or default, supporting both fields for third-party compatibility
-                # "value" takes precedence over "default" if both are present
-                value = env_var.get("value") or env_var.get("default", "")
-                env_vars.append(V1EnvVar(name=name, value=value))
-
-        return env_vars
-
-    def _create_credential_env_vars(
+    def _create_env_vars_from_packages(
         self, packages: list[dict[str, Any]], namespace: str
     ) -> list[V1EnvVar]:
-        """Create environment variables for secrets from MCP server packages"""
+        """Create environment variables from MCP server packages.
+
+        For each environment variable:
+        1. Check if it exists in workspace-secrets (regardless of isSecret flag)
+        2. If found in secrets, use secret reference
+        3. If not in secrets, use value or default from package definition
+        """
         env_vars = []
 
         # Get workspace secrets to check which keys are available
@@ -555,11 +536,12 @@ class CoreMCPOperator:
             env_variables = package.get("environmentVariables", [])
             for env_var in env_variables:
                 name = env_var.get("name")
-                if not name or not env_var.get("isSecret", False):
+                if not name:
                     continue
 
+                # Check if this variable exists in workspace-secrets
                 if name in workspace_secret_keys:
-                    # Use secret reference for credentials that exist in workspace-secrets
+                    # Use secret reference - available for ALL env vars in workspace-secrets
                     env_vars.append(
                         V1EnvVar(
                             name=name,
@@ -567,15 +549,24 @@ class CoreMCPOperator:
                                 secret_key_ref=client.V1SecretKeySelector(
                                     name="workspace-secrets",
                                     key=name,
-                                    optional=False,  # Secrets should be required
+                                    optional=False,
                                 )
                             ),
                         )
                     )
                 else:
-                    logger.warning(
-                        f"Required secret environment variable {name} not found in workspace-secrets in namespace {namespace}"
-                    )
+                    # Not in secrets - use value or default from package definition
+                    # "value" takes precedence over "default" if both are present
+                    value = env_var.get("value") or env_var.get("default", "")
+
+                    # Warn if this is marked as required but has no value and no secret
+                    if env_var.get("isRequired", False) and not value:
+                        logger.warning(
+                            f"Required environment variable {name} not found in workspace-secrets "
+                            f"and has no default value in namespace {namespace}"
+                        )
+
+                    env_vars.append(V1EnvVar(name=name, value=value))
 
         return env_vars
 

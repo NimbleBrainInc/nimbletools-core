@@ -418,27 +418,28 @@ When adding platform features, always ask:
 ### Single Source of Truth
 - **VERSION file**: All version numbers are managed from a single `VERSION` file at the repository root
 - **Automatic synchronization**: Use `make update-version` to sync all components
-- **Consistent tagging**: Docker images, Helm charts, and releases all use the same version
+- **Consistent versioning**: Docker images, Helm chart version, and Helm chart appVersion all use the same version
+- **Chart and images in sync**: The Helm chart `version` and `appVersion` are always kept identical to simplify release management
 
 ### Version Update Workflow
 1. **Update version number**:
    ```bash
-   # Option 1: Use make command
+   # Recommended: Use make command
    make set-version VERSION=0.3.0
 
-   # Option 2: Edit VERSION file directly, then sync
+   # Alternative: Edit VERSION file directly, then sync
    echo "0.3.0" > VERSION
    make update-version
    ```
 
 2. **Files automatically updated**:
-   - `chart/Chart.yaml` - Helm chart appVersion
+   - `chart/Chart.yaml` - Both `version` and `appVersion` (kept in sync)
    - `chart/values.yaml` - All Docker image tags
    - `scripts/build-images.sh` - VERSION variable
    - `redeploy.sh` - Any version references
    - `Makefile` - VERSION variable
 
-3. **Build and deploy**:
+3. **Build and test locally**:
    ```bash
    # Build all images with new version
    ./scripts/build-images.sh --local
@@ -447,12 +448,19 @@ When adding platform features, always ask:
    ./install.sh --local
    ```
 
+4. **Publish (when ready)**:
+   ```bash
+   # Full release: verify, tag, build, and publish
+   make release
+   ```
+
 ### Version Commands
 - `make version` - Show current version
-- `make update-version` - Sync all files from VERSION file
-- `make set-version VERSION=x.y.z` - Set new version and sync
-- `make tag` - Create git tag for current version
-- `make release` - Full release process (build, push, tag)
+- `make set-version VERSION=x.y.z` - Set new version and sync all files
+- `make update-version` - Sync all files from VERSION file (if manually edited)
+- `make tag` - Create and push git tag for current version
+- `make publish` - Publish images and chart (prompts for confirmation)
+- `make release` - Full release workflow (verify, tag, publish)
 
 ### Version Format
 - Development: `x.y.z-dev` (e.g., `0.2.0-dev`)
@@ -460,11 +468,19 @@ When adding platform features, always ask:
 - Production: `x.y.z` (e.g., `0.2.0`)
 - Follow semantic versioning (semver.org)
 
+### Publishing Workflow
+1. **Set version**: `make set-version VERSION=x.y.z`
+2. **Verify quality**: `make verify` (runs in all modules)
+3. **Test locally**: Build and deploy to local k3d cluster
+4. **Release**: `make release` (creates tag, publishes images and chart)
+5. **Create GitHub release**: `make github-release` (requires gh CLI)
+
 ### Important Notes
-- **Always use make update-version** after manually editing VERSION file
-- **Never manually edit** image tags in values.yaml - use version management
+- **Always use make set-version** - Never manually edit version files
+- **Chart and image versions are synced** - Simplifies version management and tracking
+- **Run make verify before release** - Ensures code quality
 - **CI/CD integration**: VERSION file is the source for automated builds
-- **Backwards compatibility**: Chart and image versions must match
+- **One version for everything**: Chart version, appVersion, and all image tags use the same version
 
 ## Architecture Decisions
 

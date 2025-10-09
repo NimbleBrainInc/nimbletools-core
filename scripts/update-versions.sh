@@ -18,9 +18,12 @@ fi
 VERSION=$(cat "$ROOT_DIR/VERSION")
 echo "Updating all components to version: $VERSION"
 
-# Update Chart.yaml appVersion
+# Update Chart.yaml version and appVersion
 echo "Updating chart/Chart.yaml..."
 if [[ -f "$ROOT_DIR/chart/Chart.yaml" ]]; then
+    # Update chart version (without v prefix, no quotes)
+    sed -i '' "s/^version: .*/version: $VERSION/" "$ROOT_DIR/chart/Chart.yaml"
+    # Update appVersion (with quotes)
     sed -i '' "s/^appVersion: .*/appVersion: \"$VERSION\"/" "$ROOT_DIR/chart/Chart.yaml"
 fi
 
@@ -54,7 +57,7 @@ echo ""
 echo "✅ Version update complete!"
 echo ""
 echo "Updated files:"
-echo "  - chart/Chart.yaml (appVersion)"
+echo "  - chart/Chart.yaml (version and appVersion)"
 echo "  - chart/values.yaml (all image tags)"
 echo "  - scripts/build-images.sh (VERSION variable)"
 [[ -f "$ROOT_DIR/redeploy.sh" ]] && echo "  - redeploy.sh"

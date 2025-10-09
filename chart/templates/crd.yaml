@@ -172,7 +172,10 @@ spec:
                               description: "Environment variable name"
                             value:
                               type: string
-                              description: "Optional default value"
+                              description: "Optional value"
+                            default:
+                              type: string
+                              description: "Default value if not provided"
                             isSecret:
                               type: boolean
                               description: "Whether this is a secret value"
