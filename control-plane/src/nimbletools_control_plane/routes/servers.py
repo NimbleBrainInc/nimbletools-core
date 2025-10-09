@@ -151,7 +151,9 @@ def _serialize_packages(packages: list[Any] | None) -> list[dict[str, Any]]:
         return []
 
     try:
-        serialized = [pkg.model_dump() for pkg in packages]
+        serialized = [
+            pkg.model_dump(exclude_none=False, by_alias=False, mode="python") for pkg in packages
+        ]
         logger.info("Serialized %d packages successfully", len(serialized))
         return serialized
     except Exception as e:

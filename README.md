@@ -3,7 +3,7 @@
 ![GitHub Release](https://img.shields.io/github/v/release/NimbleBrainInc/nimbletools-core)
 ![GitHub License](https://img.shields.io/github/license/NimbleBrainInc/nimbletools-core)
 [![Actions status](https://github.com/NimbleBrainInc/nimbletools-core/actions/workflows/ci.yml/badge.svg)](https://github.com/NimbleBrainInc/nimbletools-core/actions)
-[![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?logo=discord&logoColor=white)](https://www.nimbletools.ai/discord?utm_source=github&utm_medium=readme&utm_campaign=nimbletools-core&utm_content=header-badge)
+[![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?logo=discord&logoColor=white)](https://www.nimblebrain.ai/discord?utm_source=github&utm_medium=readme&utm_campaign=nimbletools-core&utm_content=header-badge)
 
 **Deploy any MCP tool as a production service in 60 seconds**
 

@@ -3,16 +3,19 @@
 from unittest.mock import Mock
 
 from nimbletools_control_plane.mcp_server_models import (
+    EnvironmentVariable,
     MCPServer,
     NimbleToolsRuntime,
     Package,
     Repository,
+    TransportProtocol,
 )
 from nimbletools_control_plane.routes.servers import (
     _build_labels_and_annotations,
     _build_resources_config,
     _build_scaling_config,
     _extract_container_config,
+    _serialize_packages,
 )
 
 
@@ -296,3 +299,93 @@ class TestBuildLabelsAndAnnotations:
 
         # Slashes should be replaced with dashes
         assert labels["mcp.nimbletools.dev/server-name"] == "provider-category-my-server"
+
+
+class TestSerializePackages:
+    """Test _serialize_packages helper function."""
+
+    def test_serialize_packages_preserves_default_field(self):
+        """Test that environment variable default values are preserved during serialization."""
+        # Create environment variables with default values
+        env_var_with_default = EnvironmentVariable(
+            name="TRANSPORT",
+            default="http",
+            isSecret=False,
+            isRequired=False,
+            description="Transport mode",
+        )
+
+        env_var_without_default = EnvironmentVariable(
+            name="API_KEY",
+            isSecret=True,
+            isRequired=True,
+            description="API key",
+        )
+
+        # Create a package with environment variables
+        transport = TransportProtocol(type="streamable-http")
+        package = Package(
+            registryType="oci",
+            identifier="test/image",
+            version="1.0.0",
+            transport=transport,
+            environmentVariables=[env_var_with_default, env_var_without_default],
+        )
+
+        # Serialize the packages
+        result = _serialize_packages([package])
+
+        # Verify the result
+        assert len(result) == 1
+        assert "environmentVariables" in result[0]
+
+        env_vars = result[0]["environmentVariables"]
+        assert len(env_vars) == 2
+
+        # Find the TRANSPORT env var
+        transport_var = next(e for e in env_vars if e["name"] == "TRANSPORT")
+
+        # This is the critical assertion - default value must be preserved
+        assert "default" in transport_var
+        assert transport_var["default"] == "http"
+        assert transport_var["isSecret"] is False
+        assert transport_var["isRequired"] is False
+
+        # Verify the API_KEY env var
+        api_key_var = next(e for e in env_vars if e["name"] == "API_KEY")
+        assert api_key_var["isSecret"] is True
+        assert api_key_var["isRequired"] is True
+
+    def test_serialize_packages_empty_list(self):
+        """Test serialization of empty package list."""
+        result = _serialize_packages([])
+        assert result == []
+
+    def test_serialize_packages_none(self):
+        """Test serialization when packages is None."""
+        result = _serialize_packages(None)
+        assert result == []
+
+    def test_serialize_packages_multiple_packages(self):
+        """Test serialization of multiple packages."""
+        transport = TransportProtocol(type="stdio")
+
+        package1 = Package(
+            registryType="npm",
+            identifier="package1",
+            version="1.0.0",
+            transport=transport,
+        )
+
+        package2 = Package(
+            registryType="pypi",
+            identifier="package2",
+            version="2.0.0",
+            transport=transport,
+        )
+
+        result = _serialize_packages([package1, package2])
+
+        assert len(result) == 2
+        assert result[0]["identifier"] == "package1"
+        assert result[1]["identifier"] == "package2"

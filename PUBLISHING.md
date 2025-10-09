@@ -105,34 +105,67 @@ All images are built for multiple platforms (`linux/amd64,linux/arm64`):
 
 The version is automatically read from `chart/Chart.yaml`.
 
-## Release Process
+## Version Management
 
-### 1. Pre-Release Checks
+### Single Source of Truth
+
+All version numbers are managed from a single `VERSION` file at the repository root. This ensures consistency across all components:
+
+- Docker image tags
+- Helm chart version
+- Helm chart appVersion
+
+### Version Commands
 
 ```bash
-# Run all quality checks
-make check
+# View current version
+make version
+
+# Set new version and sync all files
+make set-version VERSION=x.y.z
+
+# Manually sync from VERSION file (if edited directly)
+make update-version
+```
+
+### Version Format
+
+- Development: `x.y.z-dev` (e.g., `0.2.0-dev`)
+- Release candidates: `x.y.z-rc.n` (e.g., `0.2.0-rc.1`)
+- Production: `x.y.z` (e.g., `0.2.0`)
+- Follow semantic versioning (semver.org)
+
+## Release Process
+
+### 1. Set Version
+
+**IMPORTANT**: This must be the first step in any release process.
+
+```bash
+# Set new version and sync all components
+make set-version VERSION=1.1.0
+```
+
+This command:
+- Updates the `VERSION` file
+- Syncs `chart/Chart.yaml` (both `version` and `appVersion`)
+- Updates all image tags in `chart/values.yaml`
+- Updates version references in build scripts
+
+### 2. Verify Quality
+
+```bash
+# Run all quality checks (format, lint, type-check, test)
+make verify
 
 # Check publishing prerequisites
 make check-publish
-
-# View current version
-make version
-```
-
-### 2. Update Version (if needed)
-
-Edit `chart/Chart.yaml`:
-
-```yaml
-version: "1.1.0" # Chart version
-appVersion: "1.1.0" # Application version
 ```
 
 ### 3. Build and Test Locally
 
 ```bash
-# Build local images
+# Build local images with new version
 make build-local
 
 # Install locally for testing
@@ -155,12 +188,21 @@ This will:
 1. Run quality checks
 2. Clean build artifacts
 3. Check publishing prerequisites
-4. Create and push Git tag
-5. Publish Docker images
-6. Publish Helm chart
+4. Create and push Git tag (`v{VERSION}`)
+5. Publish Docker images (all platforms)
+6. Publish Helm chart to GHCR
 7. Show verification steps
 
-### 5. Verify Release
+### 5. Create GitHub Release
+
+```bash
+# Create GitHub release (requires gh CLI)
+make github-release
+```
+
+Or create manually at: https://github.com/NimbleBrainInc/nimbletools-core/releases/new
+
+### 6. Verify Release
 
 After publishing, verify the release:
 

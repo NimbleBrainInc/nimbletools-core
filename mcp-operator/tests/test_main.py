@@ -142,7 +142,9 @@ class TestCoreMCPOperator:
                 ]
             }
         ]
-        env_vars = operator._create_env_vars_from_packages(packages)
+        # Mock _get_workspace_secret_keys to return empty set (no secrets)
+        with patch.object(operator, "_get_workspace_secret_keys", return_value=set()):
+            env_vars = operator._create_env_vars_from_packages(packages, "test-namespace")
 
         assert len(env_vars) == 2
         assert env_vars[0].name == "LOG_LEVEL"
@@ -166,14 +168,16 @@ class TestCoreMCPOperator:
                 ]
             }
         ]
-        env_vars = operator._create_env_vars_from_packages(packages)
+        # Mock _get_workspace_secret_keys to return empty set (no secrets)
+        with patch.object(operator, "_get_workspace_secret_keys", return_value=set()):
+            env_vars = operator._create_env_vars_from_packages(packages, "test-namespace")
 
         assert len(env_vars) == 1
         assert env_vars[0].name == "CONFIG"
         assert env_vars[0].value == "production"
 
     def test_create_env_vars_from_packages_skips_secrets(self, operator: CoreMCPOperator) -> None:
-        """Test that variables marked as secrets are skipped (handled elsewhere)."""
+        """Test that variables from workspace-secrets are referenced, not values."""
         packages = [
             {
                 "environmentVariables": [
@@ -190,12 +194,16 @@ class TestCoreMCPOperator:
                 ]
             }
         ]
-        env_vars = operator._create_env_vars_from_packages(packages)
+        # Mock API_KEY being in workspace-secrets
+        with patch.object(operator, "_get_workspace_secret_keys", return_value={"API_KEY"}):
+            env_vars = operator._create_env_vars_from_packages(packages, "test-namespace")
 
-        # Should only have LOG_LEVEL, not API_KEY
-        assert len(env_vars) == 1
-        assert env_vars[0].name == "LOG_LEVEL"
-        assert env_vars[0].value == "info"
+        # Should have both: API_KEY from secret reference, LOG_LEVEL from value
+        assert len(env_vars) == 2
+        assert env_vars[0].name == "API_KEY"
+        assert env_vars[0].value_from is not None  # Secret reference
+        assert env_vars[1].name == "LOG_LEVEL"
+        assert env_vars[1].value == "info"
 
     def test_create_deployment_stdio_type(self, operator: CoreMCPOperator) -> None:
         """Test deployment creation calls correct method for stdio type."""
