@@ -1,0 +1,292 @@
+suite: test control-plane extraEnv functionality
+templates:
+  - control_plane.yaml
+tests:
+  # Test 1: Default empty extraEnv (backward compatibility)
+  - it: should handle empty extraEnv list
+    values:
+      - ../values.yaml
+    documentIndex: 0
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: spec.template.spec.containers[0].name
+          value: control-plane
+      # Should only have the default env vars (PORT, CORS, DOMAIN)
+      - isNotNull:
+          path: spec.template.spec.containers[0].env
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PORT
+            value: "8080"
+
+  # Test 2: Simple value (backward compatibility)
+  - it: should support simple value in extraEnv
+    values:
+      - ../values.yaml
+    documentIndex: 0
+    set:
+      extraEnv:
+        - name: EDITION
+          value: "enterprise"
+        - name: LOG_LEVEL
+          value: "debug"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: EDITION
+            value: "enterprise"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: LOG_LEVEL
+            value: "debug"
+
+  # Test 3: Secret reference via secretKeyRef
+  - it: should support secretKeyRef in extraEnv
+    values:
+      - ../values.yaml
+    documentIndex: 0
+    set:
+      extraEnv:
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: api-credentials
+              key: api-key
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: api-credentials
+                key: api-key
+
+  # Test 4: Optional secret reference
+  - it: should support optional secretKeyRef in extraEnv
+    values:
+      - ../values.yaml
+    documentIndex: 0
+    set:
+      extraEnv:
+        - name: OPTIONAL_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: optional-secret
+              key: optional-key
+              optional: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OPTIONAL_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: optional-secret
+                key: optional-key
+                optional: true
+
+  # Test 5: ConfigMap reference
+  - it: should support configMapKeyRef in extraEnv
+    values:
+      - ../values.yaml
+    documentIndex: 0
+    set:
+      extraEnv:
+        - name: CONFIG_VALUE
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: setting
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CONFIG_VALUE
+            valueFrom:
+              configMapKeyRef:
+                name: app-config
+                key: setting
+
+  # Test 6: Field reference
+  - it: should support fieldRef in extraEnv
+    values:
+      - ../values.yaml
+    documentIndex: 0
+    set:
+      extraEnv:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: POD_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+
+  # Test 7: Resource field reference
+  - it: should support resourceFieldRef in extraEnv
+    values:
+      - ../values.yaml
+    documentIndex: 0
+    set:
+      extraEnv:
+        - name: MEMORY_LIMIT
+          valueFrom:
+            resourceFieldRef:
+              containerName: control-plane
+              resource: limits.memory
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: MEMORY_LIMIT
+            valueFrom:
+              resourceFieldRef:
+                containerName: control-plane
+                resource: limits.memory
+
+  # Test 8: Mixed value and valueFrom (the real-world scenario)
+  - it: should support mixed value and valueFrom in extraEnv
+    values:
+      - ../values.yaml
+    documentIndex: 0
+    set:
+      extraEnv:
+        - name: EDITION
+          value: "enterprise"
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: auth-secrets
+              key: jwt-secret
+        - name: REGION
+          valueFrom:
+            configMapKeyRef:
+              name: deployment-config
+              key: region
+        - name: DEBUG
+          value: "true"
+    asserts:
+      # Check simple values
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: EDITION
+            value: "enterprise"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DEBUG
+            value: "true"
+      # Check secret reference
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: JWT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: auth-secrets
+                key: jwt-secret
+      # Check configMap reference
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REGION
+            valueFrom:
+              configMapKeyRef:
+                name: deployment-config
+                key: region
+
+  # Test 9: Ensure no env var is created without value or valueFrom
+  - it: should not create env var with missing value and valueFrom
+    values:
+      - ../values.yaml
+    documentIndex: 0
+    set:
+      extraEnv:
+        - name: VALID_VAR
+          value: "valid"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: VALID_VAR
+            value: "valid"
+
+  # Test 10: Enterprise authentication use case
+  - it: should support enterprise authentication configuration
+    values:
+      - ../values.yaml
+    documentIndex: 0
+    set:
+      extraEnv:
+        - name: PROVIDER_TYPE
+          value: "jwt"
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: jwt-config
+              key: secret
+        - name: JWT_ISSUER
+          valueFrom:
+            secretKeyRef:
+              name: jwt-config
+              key: issuer
+        - name: OAUTH_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: oauth-credentials
+              key: client-secret
+              optional: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: PROVIDER_TYPE
+            value: "jwt"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: JWT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: jwt-config
+                key: secret
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: JWT_ISSUER
+            valueFrom:
+              secretKeyRef:
+                name: jwt-config
+                key: issuer
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OAUTH_CLIENT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: oauth-credentials
+                key: client-secret
+                optional: true

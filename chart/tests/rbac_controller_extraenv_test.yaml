@@ -1,0 +1,108 @@
+suite: test rbac-controller extraEnv functionality
+templates:
+  - rbac-controller.yaml
+tests:
+  # Test 1: Default empty extraEnv
+  - it: should handle empty extraEnv list
+    values:
+      - ../values.yaml
+    documentIndex: 3
+    set:
+      rbacController.enabled: true
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: spec.template.spec.containers[0].name
+          value: rbac-controller
+      # Should have KUBERNETES_NAMESPACE env var with valueFrom by default
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KUBERNETES_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+
+  # Test 2: Simple value (backward compatibility)
+  - it: should support simple value in extraEnv
+    values:
+      - ../values.yaml
+    documentIndex: 3
+    set:
+      rbacController.enabled: true
+      extraEnv:
+        - name: CUSTOM_SETTING
+          value: "test-value"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CUSTOM_SETTING
+            value: "test-value"
+
+  # Test 3: Secret reference
+  - it: should support secretKeyRef in extraEnv
+    values:
+      - ../values.yaml
+    documentIndex: 3
+    set:
+      rbacController.enabled: true
+      extraEnv:
+        - name: ADMIN_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: admin-credentials
+              key: token
+              optional: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ADMIN_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: admin-credentials
+                key: token
+                optional: true
+
+  # Test 4: Mixed configuration
+  - it: should support mixed value and valueFrom
+    values:
+      - ../values.yaml
+    documentIndex: 3
+    set:
+      rbacController.enabled: true
+      extraEnv:
+        - name: ENVIRONMENT
+          value: "production"
+        - name: CONFIG_VALUE
+          valueFrom:
+            configMapKeyRef:
+              name: rbac-config
+              key: setting
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ENVIRONMENT
+            value: "production"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CONFIG_VALUE
+            valueFrom:
+              configMapKeyRef:
+                name: rbac-config
+                key: setting
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName

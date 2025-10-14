@@ -1,0 +1,99 @@
+suite: test operator extraEnv functionality
+templates:
+  - operator.yaml
+tests:
+  # Test 1: Default empty extraEnv
+  - it: should handle empty extraEnv list
+    values:
+      - ../values.yaml
+    documentIndex: 0
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: spec.template.spec.containers[0].name
+          value: operator
+      # Should have default operator env vars
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: LOG_LEVEL
+            value: info
+
+  # Test 2: Simple value (backward compatibility)
+  - it: should support simple value in extraEnv
+    values:
+      - ../values.yaml
+    documentIndex: 0
+    set:
+      extraEnv:
+        - name: CUSTOM_CONFIG
+          value: "enabled"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CUSTOM_CONFIG
+            value: "enabled"
+
+  # Test 3: Secret reference
+  - it: should support secretKeyRef in extraEnv
+    values:
+      - ../values.yaml
+    documentIndex: 0
+    set:
+      extraEnv:
+        - name: REGISTRY_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: registry-credentials
+              key: token
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: REGISTRY_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: registry-credentials
+                key: token
+
+  # Test 4: Mixed configuration
+  - it: should support mixed value and valueFrom
+    values:
+      - ../values.yaml
+    documentIndex: 0
+    set:
+      extraEnv:
+        - name: FEATURE_FLAG
+          value: "enabled"
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: password
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: FEATURE_FLAG
+            value: "enabled"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: DATABASE_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: db-credentials
+                key: password
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: POD_IP
+            valueFrom:
+              fieldRef:
+                fieldPath: status.podIP
