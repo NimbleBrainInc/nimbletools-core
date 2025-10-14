@@ -2,7 +2,7 @@
 .PHONY: help install verify check clean docker-build update-version
 
 # Version from VERSION file
-VERSION ?= 0.2.1
+VERSION ?= 0.2.2
 
 # Default target
 help: ## Show this help message

@@ -1,8 +1,8 @@
 apiVersion: v2
 name: nimbletools-core
 description: Open-source MCP service runtime for Kubernetes
-version: 0.2.1
-appVersion: "0.2.1"
+version: 0.2.2
+appVersion: "0.2.2"
 home: https://www.nimbletools.ai
 sources:
   - https://github.com/nimblebrain/nimbletools-core
@@ -16,3 +16,7 @@ keywords:
   - kubernetes
   - serverless
 type: application
+dependencies:
+  - name: nginx-ingress
+    version: 0.1.0
+    condition: nginx-ingress.enabled

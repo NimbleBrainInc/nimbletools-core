@@ -175,6 +175,9 @@ jobs:
       - name: Install helm-unittest plugin
         run: helm plugin install https://github.com/helm-unittest/helm-unittest
 
+      - name: Build chart dependencies
+        run: helm dependency build chart/
+
       - name: Run helm lint
         run: helm lint chart/
 

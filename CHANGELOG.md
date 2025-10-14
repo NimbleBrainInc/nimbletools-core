@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Helm chart `extraEnv` now supports `valueFrom` for referencing Kubernetes secrets, ConfigMaps, and pod metadata
 - All three components (control-plane, operator, rbac-controller) now support standard Kubernetes secret management patterns
+- Chart.yaml now properly declares nginx-ingress as a dependency to fix helm lint warnings
 
 ### Added
 - Comprehensive Helm chart testing infrastructure using helm-unittest plugin
@@ -19,10 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `scripts/test-chart.sh` - Automated test runner for chart validation
 - Makefile targets: `make test-chart`, `make verify-chart` for chart testing
 - Integration of chart tests into main `make verify` workflow
+- Chart.lock file to lock dependency versions
 
 ### Changed
 - Helm chart templates now conditionally render `value` or `valueFrom` based on configuration
 - Chart testing now runs as part of CI/CD verification process
+- CI now runs `helm dependency build` before linting to validate subcharts
 
 ## [0.2.1] - 2025-10-08
 
