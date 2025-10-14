@@ -42,7 +42,12 @@ spec:
           value: "false"
         {{- range .Values.extraEnv }}
         - name: {{ .name }}
+          {{- if .value }}
           value: {{ .value | quote }}
+          {{- else if .valueFrom }}
+          valueFrom:
+            {{- toYaml .valueFrom | nindent 12 }}
+          {{- end }}
         {{- end }}
         ports:
         - name: metrics

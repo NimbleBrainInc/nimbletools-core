@@ -31,17 +31,34 @@ install-rbac-controller: ## Install rbac controller dependencies
 	@cd rbac-controller && uv sync --dev
 
 # Verification - single command for all quality checks
-verify: ## Run all verification steps (format, lint, type-check, test) in all modules
+verify: verify-code verify-chart ## Run all verification steps (code + chart tests)
+	@echo ""
+	@echo "✅ All modules verified successfully!"
+
+verify-code: ## Run verification for all Python modules
 	@echo "🔍 Running full verification suite for all modules..."
 	@echo "================================================"
 	@cd control-plane && $(MAKE) verify
 	@cd mcp-operator && $(MAKE) verify
 	@cd universal-adapter && $(MAKE) verify
 	@cd rbac-controller && $(MAKE) verify
-	@echo ""
-	@echo "✅ All modules verified successfully!"
 
 
+
+# Helm Chart Testing
+verify-chart: ## Run Helm chart unit tests
+	@echo "🧪 Running Helm chart tests..."
+	@./scripts/test-chart.sh
+
+test-chart: verify-chart ## Alias for verify-chart
+
+test-chart-verbose: ## Run Helm chart tests with verbose output
+	@echo "🧪 Running Helm chart tests (verbose)..."
+	@./scripts/test-chart.sh -v
+
+lint-chart: ## Lint Helm chart
+	@echo "🔍 Linting Helm chart..."
+	@helm lint chart/
 
 # Backwards compatibility alias
 check: verify ## Alias for verify (backwards compatibility)

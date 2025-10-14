@@ -5,6 +5,25 @@ All notable changes to NimbleTools Core will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2025-10-12
+
+### Fixed
+- Helm chart `extraEnv` now supports `valueFrom` for referencing Kubernetes secrets, ConfigMaps, and pod metadata
+- All three components (control-plane, operator, rbac-controller) now support standard Kubernetes secret management patterns
+
+### Added
+- Comprehensive Helm chart testing infrastructure using helm-unittest plugin
+- 18 automated tests covering extraEnv functionality across all components
+- `docs/HELM_CONFIGURATION.md` - Complete guide for Helm chart configuration with extraEnv examples
+- `docs/TESTING_HELM_CHARTS.md` - Guide for testing Helm charts using TDD principles
+- `scripts/test-chart.sh` - Automated test runner for chart validation
+- Makefile targets: `make test-chart`, `make verify-chart` for chart testing
+- Integration of chart tests into main `make verify` workflow
+
+### Changed
+- Helm chart templates now conditionally render `value` or `valueFrom` based on configuration
+- Chart testing now runs as part of CI/CD verification process
+
 ## [0.2.1] - 2025-10-08
 
 ### Fixed
