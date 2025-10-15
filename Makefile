@@ -255,7 +255,7 @@ github-release: ## Create GitHub release (requires gh CLI)
 	@echo "✅ GitHub release v$(VERSION) created"
 
 # Release workflow
-release: check clean-dist check-publish tag publish ## Complete release workflow
+release: check clean-dist check-publish tag publish github-release ## Complete release workflow
 	@echo
 	@echo "🎉 Release $(VERSION) complete!"
 	@echo
@@ -263,6 +263,7 @@ release: check clean-dist check-publish tag publish ## Complete release workflow
 	@echo "   Git tag: v$(VERSION)"
 	@echo "   Docker images: $(DOCKER_REGISTRY)/nimbletools/*:$(VERSION)"
 	@echo "   Helm chart: oci://$(REGISTRY)/charts/$(CHART_NAME):$(VERSION)"
+	@echo "   GitHub release: https://github.com/NimbleBrainInc/nimbletools-core/releases/tag/v$(VERSION)"
 	@echo
 	@echo "🔍 Verification steps:"
 	@echo "1. Check GitHub releases: https://github.com/NimbleBrainInc/nimbletools-core/releases"
