@@ -40,7 +40,8 @@ class TestExtractContainerConfig:
         """Test extraction with OCI package."""
         package = Mock(spec=Package)
         package.registryType = "oci"
-        package.identifier = "myapp:latest"
+        package.identifier = "myapp"
+        package.version = "1.0.1"
         package.registryBaseUrl = "ghcr.io"
 
         mcp_server = Mock(spec=MCPServer)
@@ -50,7 +51,7 @@ class TestExtractContainerConfig:
         result = _extract_container_config(mcp_server)
 
         assert result == {
-            "image": "myapp:latest",
+            "image": "myapp:1.0.1",
             "registry": "ghcr.io",
             "port": 8000,
         }
@@ -63,7 +64,8 @@ class TestExtractContainerConfig:
 
         oci_package = Mock(spec=Package)
         oci_package.registryType = "oci"
-        oci_package.identifier = "myapp:v2"
+        oci_package.identifier = "myapp"
+        oci_package.version = "v2.0.0"
         oci_package.registryBaseUrl = None
 
         mcp_server = Mock(spec=MCPServer)
@@ -74,7 +76,7 @@ class TestExtractContainerConfig:
 
         # Should use the first OCI package, ignore npm
         assert result == {
-            "image": "myapp:v2",
+            "image": "myapp:v2.0.0",
             "registry": "docker.io",
             "port": 8000,
         }
@@ -83,7 +85,8 @@ class TestExtractContainerConfig:
         """Test port override from runtime config."""
         package = Mock(spec=Package)
         package.registryType = "oci"
-        package.identifier = "myapp:latest"
+        package.identifier = "myapp"
+        package.version = "latest"
         package.registryBaseUrl = None
 
         runtime = Mock(spec=NimbleToolsRuntime)

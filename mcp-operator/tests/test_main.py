@@ -899,3 +899,56 @@ class TestDeleteHandler:
             # Verify appropriate logging
             assert mock_logger.warning.called  # Warning for 500 error
             assert mock_logger.info.called  # Info for successful deletions
+
+
+class TestImagePullPolicy:
+    """Test _determine_image_pull_policy helper function."""
+
+    @pytest.fixture
+    def operator(
+        self, mock_k8s_config: Any, mock_k8s_clients: Any
+    ) -> Generator[CoreMCPOperator, None, None]:
+        """Create operator instance with mocks."""
+        yield CoreMCPOperator()
+
+    def test_pull_policy_for_latest_tag(self, operator: CoreMCPOperator) -> None:
+        """Test that :latest tag uses 'Always' pull policy."""
+        assert operator._determine_image_pull_policy("docker.io/myapp:latest") == "Always"
+
+    def test_pull_policy_for_edge_tag(self, operator: CoreMCPOperator) -> None:
+        """Test that :edge tag uses 'Always' pull policy."""
+        assert operator._determine_image_pull_policy("docker.io/myapp:edge") == "Always"
+
+    def test_pull_policy_for_dev_tag(self, operator: CoreMCPOperator) -> None:
+        """Test that :dev tag uses 'Always' pull policy."""
+        assert operator._determine_image_pull_policy("ghcr.io/org/myapp:dev") == "Always"
+
+    def test_pull_policy_for_semantic_version(self, operator: CoreMCPOperator) -> None:
+        """Test that semantic version tags use 'IfNotPresent' pull policy."""
+        assert operator._determine_image_pull_policy("docker.io/myapp:1.0.1") == "IfNotPresent"
+        assert operator._determine_image_pull_policy("docker.io/myapp:v2.3.4") == "IfNotPresent"
+        assert operator._determine_image_pull_policy("docker.io/myapp:0.1.0-rc.1") == "IfNotPresent"
+
+    def test_pull_policy_for_no_tag(self, operator: CoreMCPOperator) -> None:
+        """Test that images without explicit tag default to 'Always' (implies :latest)."""
+        assert operator._determine_image_pull_policy("docker.io/myapp") == "Always"
+
+    def test_pull_policy_for_main_branch_tag(self, operator: CoreMCPOperator) -> None:
+        """Test that :main branch tag uses 'Always' pull policy."""
+        assert operator._determine_image_pull_policy("docker.io/myapp:main") == "Always"
+
+    def test_pull_policy_for_staging_tag(self, operator: CoreMCPOperator) -> None:
+        """Test that :staging tag uses 'Always' pull policy."""
+        assert operator._determine_image_pull_policy("docker.io/myapp:staging") == "Always"
+
+    def test_http_deployment_uses_smart_pull_policy(self, operator: CoreMCPOperator) -> None:
+        """Test that HTTP deployment uses the determined pull policy."""
+        # Test with :latest tag - should use Always
+        spec_latest = {"container": {"image": "myapp:latest"}}
+        result_latest = operator._create_http_deployment("test", spec_latest, "test-ns")
+        assert result_latest.spec.template.spec.containers[0].image_pull_policy == "Always"
+
+        # Test with semantic version - should use IfNotPresent
+        spec_version = {"container": {"image": "myapp:1.0.1"}}
+        result_version = operator._create_http_deployment("test", spec_version, "test-ns")
+        assert result_version.spec.template.spec.containers[0].image_pull_policy == "IfNotPresent"
