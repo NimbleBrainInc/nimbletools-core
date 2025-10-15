@@ -5,6 +5,17 @@ All notable changes to NimbleTools Core will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2025-10-14
+
+### Fixed
+- Control-plane now correctly appends version tag from package definition to Docker image references
+- MCP operator now uses smart imagePullPolicy based on image tag (Always for mutable tags like :latest, IfNotPresent for semantic versions)
+- Kubernetes pods now pull updated images when version tags are specified in server.json
+
+### Changed
+- Image references now include version tag from server.json packages array (e.g., "nimbletools/mcp-deepl:1.0.1")
+- Operator determines pull policy automatically: mutable tags (:latest, :edge, :dev) use Always, semantic versions use IfNotPresent
+
 ## [0.2.2] - 2025-10-12
 
 ### Fixed
