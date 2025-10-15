@@ -53,7 +53,11 @@ def _extract_container_config(mcp_server: MCPServer) -> dict[str, Any]:
     if mcp_server.packages:
         for package in mcp_server.packages:
             if package.registryType == "oci":
-                container_config["image"] = package.identifier
+                # Construct full image reference with version tag
+                image_identifier = package.identifier
+                image_version = package.version
+                container_config["image"] = f"{image_identifier}:{image_version}"
+
                 if package.registryBaseUrl:
                     container_config["registry"] = package.registryBaseUrl
                 break

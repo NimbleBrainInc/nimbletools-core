@@ -186,6 +186,33 @@ class CoreMCPOperator:
         # Default to HTTP for no transport specified
         return "http"
 
+    def _determine_image_pull_policy(self, image: str) -> str:
+        """
+        Determine appropriate imagePullPolicy based on image tag.
+
+        For mutable tags (latest, edge, dev, etc.) use "Always" to ensure
+        updates are pulled. For semantic version tags use "IfNotPresent" for
+        better performance since these should be immutable.
+
+        Args:
+            image: Full image reference (e.g., "docker.io/myapp:1.0.1")
+
+        Returns:
+            "Always" or "IfNotPresent"
+        """
+        # Extract tag from image reference
+        # No tag specified means :latest
+        image_tag = image.split(":")[-1] if ":" in image else "latest"
+
+        # List of mutable tags that should always be pulled
+        mutable_tags = ["latest", "edge", "dev", "main", "master", "develop", "staging"]
+
+        # Use "Always" for mutable tags, "IfNotPresent" for semantic versions
+        if image_tag in mutable_tags:
+            return "Always"
+
+        return "IfNotPresent"
+
     def create_configmap(
         self, name: str, config_data: dict[str, Any], namespace: str
     ) -> V1ConfigMap:
@@ -384,6 +411,9 @@ class CoreMCPOperator:
         registry = registry.replace("https://", "").replace("http://", "")
         full_image = f"{registry}/{container_image}"
 
+        # Determine smart pull policy based on image tag
+        pull_policy = self._determine_image_pull_policy(full_image)
+
         port = container_config.get("port", 8000)
 
         # Get health check path from routing configuration
@@ -431,7 +461,7 @@ class CoreMCPOperator:
                             V1Container(
                                 name=name,
                                 image=full_image,
-                                image_pull_policy="IfNotPresent",
+                                image_pull_policy=pull_policy,
                                 # Use runtimeArguments from package definition to support custom startup args
                                 args=self._extract_runtime_args(spec.get("packages", []), port),
                                 security_context=V1SecurityContext(
