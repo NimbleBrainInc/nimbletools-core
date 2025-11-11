@@ -118,6 +118,8 @@ class TestServerStatusMapping:
         mock_deployment = Mock()
         mock_deployment.status.ready_replicas = 1
         mock_deployment.status.replicas = 1
+        mock_deployment.status.unavailable_replicas = 0
+        mock_deployment.status.conditions = None
 
         with patch(
             "nimbletools_control_plane.routes.servers.client.CustomObjectsApi"
@@ -168,30 +170,36 @@ class TestServerStatusMapping:
         mock_deployment = Mock()
         mock_deployment.status.ready_replicas = 0
         mock_deployment.status.replicas = 1
+        mock_deployment.status.unavailable_replicas = 1
+        mock_deployment.status.conditions = None
 
-        with patch(
-            "nimbletools_control_plane.routes.servers.client.CustomObjectsApi"
-        ) as mock_custom_api:
-            with patch(
-                "nimbletools_control_plane.routes.servers.client.AppsV1Api"
-            ) as mock_apps_api:
-                mock_custom_api.return_value.list_namespaced_custom_object.return_value = {
-                    "items": [mock_mcpservice]
-                }
+        with (
+            patch(
+                "nimbletools_control_plane.routes.servers.client.CustomObjectsApi"
+            ) as mock_custom_api,
+            patch("nimbletools_control_plane.routes.servers.client.AppsV1Api") as mock_apps_api,
+            patch(
+                "nimbletools_control_plane.routes.servers._check_pod_failure_status"
+            ) as mock_check_pod,
+        ):
+            mock_custom_api.return_value.list_namespaced_custom_object.return_value = {
+                "items": [mock_mcpservice]
+            }
 
-                mock_apps_api.return_value.read_namespaced_deployment.return_value = mock_deployment
+            mock_apps_api.return_value.read_namespaced_deployment.return_value = mock_deployment
+            mock_check_pod.return_value = False  # No pod failures
 
-                mock_request = Mock()
+            mock_request = Mock()
 
-                result = await list_workspace_servers(workspace_id, mock_request, namespace_name)
+            result = await list_workspace_servers(workspace_id, mock_request, namespace_name)
 
-                assert len(result.servers) == 1
-                server = result.servers[0]
-                assert server.status == "Pending"
+            assert len(result.servers) == 1
+            server = result.servers[0]
+            assert server.status == "Pending"
 
     @pytest.mark.asyncio
     async def test_server_status_falls_back_to_mcpservice_status_when_deployment_not_found(self):
-        """Test server status uses MCPService status when deployment doesn't exist."""
+        """Test server status returns Pending when deployment doesn't exist."""
         workspace_id = "550e8400-e29b-41d4-a716-446655440001"
         namespace_name = "ws-550e8400-e29b-41d4-a716-446655440001"
 
@@ -225,7 +233,7 @@ class TestServerStatusMapping:
 
                 assert len(result.servers) == 1
                 server = result.servers[0]
-                assert server.status == "Deploying"
+                assert server.status == "Pending"  # Returns Pending when deployment not found
 
     @pytest.mark.asyncio
     async def test_server_status_shows_unknown_when_both_deployment_and_mcpservice_status_empty(

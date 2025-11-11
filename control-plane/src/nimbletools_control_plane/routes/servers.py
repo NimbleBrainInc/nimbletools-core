@@ -252,6 +252,75 @@ async def get_service_if_exists(name: str, namespace: str) -> Any:
     return k8s_core.read_namespaced_service(name=name, namespace=namespace)
 
 
+async def _check_pod_failure_status(namespace: str, server_name: str) -> bool:
+    """Check if any pods have failure status like ImagePullBackOff"""
+    try:
+        k8s_core = client.CoreV1Api()
+        pods = k8s_core.list_namespaced_pod(
+            namespace=namespace, label_selector=f"app={server_name}"
+        )
+
+        for pod in pods.items:
+            if pod.status and pod.status.container_statuses:
+                for container_status in pod.status.container_statuses:
+                    if container_status.state and container_status.state.waiting:
+                        waiting_reason = container_status.state.waiting.reason
+                        # These reasons indicate failures, not just pending
+                        failure_reasons = [
+                            "ImagePullBackOff",
+                            "ErrImagePull",
+                            "CrashLoopBackOff",
+                            "RunContainerError",
+                            "CreateContainerConfigError",
+                            "InvalidImageName",
+                        ]
+                        if waiting_reason in failure_reasons:
+                            return True
+    except Exception as e:
+        logger.warning("Failed to check pod status for server %s: %s", server_name, e)
+    return False
+
+
+async def determine_deployment_phase(deployment: Any, namespace: str, server_name: str) -> str:
+    """
+    Determine the deployment phase by checking deployment conditions and pod status.
+
+    Returns one of: "Running", "Pending", "Failed", "Stopped"
+    """
+    if not deployment or not deployment.status:
+        return "Pending"
+
+    # Check deployment conditions for failures
+    if deployment.status.conditions:
+        for condition in deployment.status.conditions:
+            # Check for failure conditions
+            is_replica_failure = condition.type == "ReplicaFailure" and condition.status == "True"
+            is_progress_failure = (
+                condition.type == "Progressing"
+                and condition.status == "False"
+                and condition.reason in ["ProgressDeadlineExceeded", "FailedCreate"]
+            )
+            if is_replica_failure or is_progress_failure:
+                return "Failed"
+
+    ready_replicas = deployment.status.ready_replicas or 0
+    total_replicas = deployment.status.replicas or 0
+    unavailable_replicas = deployment.status.unavailable_replicas or 0
+
+    # Determine phase based on replica status
+    if ready_replicas > 0:
+        return "Running"
+
+    if total_replicas == 0:
+        return "Stopped"
+
+    # Has replicas but none ready - check for pod failures or return pending
+    has_pod_failures = unavailable_replicas > 0 and await _check_pod_failure_status(
+        namespace, server_name
+    )
+    return "Failed" if has_pod_failures else "Pending"
+
+
 @router.get("/{workspace_id}/servers")
 async def list_workspace_servers(
     workspace_id: str,
@@ -277,27 +346,16 @@ async def list_workspace_servers(
         for mcpservice in mcpservices.get("items", []):
             server_name = mcpservice.get("metadata", {}).get("name")
             spec = mcpservice.get("spec", {})
-            status = mcpservice.get("status", {})
 
-            # Get actual deployment status
+            # Get actual deployment status by checking deployment conditions and pod status
             deployment_status = "Unknown"
             try:
                 deployment = await get_deployment_if_exists(
                     f"{server_name}-deployment", namespace_name
                 )
-                if deployment and deployment.status:
-                    ready_replicas = deployment.status.ready_replicas or 0
-                    total_replicas = deployment.status.replicas or 0
-
-                    if ready_replicas > 0:
-                        deployment_status = "Running"
-                    elif total_replicas > 0:
-                        deployment_status = "Pending"
-                    else:
-                        deployment_status = "Stopped"
-                else:
-                    # Deployment doesn't exist yet, use MCPService status or default to Pending
-                    deployment_status = status.get("phase", "Pending")
+                deployment_status = await determine_deployment_phase(
+                    deployment, namespace_name, server_name
+                )
             except KubernetesOperationError as e:
                 # Handle transient Kubernetes API errors gracefully
                 logger.warning(
@@ -305,14 +363,13 @@ async def list_workspace_servers(
                     server_name,
                     e.message,
                 )
-                # Use MCPService status as fallback
-                deployment_status = status.get("phase", "Pending")
+                deployment_status = "Unknown"
             except Exception as e:
                 # Log unexpected errors but don't fail the entire list operation
                 logger.warning(
                     "Unexpected error getting deployment status for server %s: %s", server_name, e
                 )
-                deployment_status = status.get("phase", "Unknown")
+                deployment_status = "Unknown"
 
             servers.append(
                 ServerSummary(
@@ -950,7 +1007,11 @@ async def get_workspace_server(
             )
 
         spec = mcpservice.get("spec", {})
-        status = mcpservice.get("status", {})
+
+        # Determine actual deployment phase from deployment conditions and pod status
+        deployment_phase = await determine_deployment_phase(
+            deployment, namespace_name, actual_server_id
+        )
 
         return ServerDetailsResponse(
             id=actual_server_id,
@@ -960,14 +1021,17 @@ async def get_workspace_server(
             image=spec.get("container", {}).get("image", ""),
             spec=spec,
             status={
-                "phase": status.get("phase", "Unknown"),
+                "phase": deployment_phase,
                 "deployment_ready": (
                     deployment
+                    and deployment.status
                     and deployment.status.ready_replicas
                     and deployment.status.ready_replicas > 0
                 ),
-                "replicas": deployment.status.replicas if deployment else 0,
-                "ready_replicas": deployment.status.ready_replicas if deployment else 0,
+                "replicas": deployment.status.replicas if deployment and deployment.status else 0,
+                "ready_replicas": (
+                    deployment.status.ready_replicas if deployment and deployment.status else 0
+                ),
                 "service_endpoint": (
                     f"/{workspace_id}/{actual_server_id}/mcp" if service else None
                 ),
