@@ -49,6 +49,10 @@ class TestServerGetRobustness:
         deployment.status = Mock()
         deployment.status.ready_replicas = ready_replicas
         deployment.status.replicas = total_replicas
+        deployment.status.unavailable_replicas = (
+            0 if ready_replicas and ready_replicas > 0 else (total_replicas or 0)
+        )
+        deployment.status.conditions = None
         return deployment
 
     def create_mock_service(self):

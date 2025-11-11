@@ -104,6 +104,8 @@ class TestServerListingRobustness:
 
         # Create deployment with total replicas but no ready replicas (pending state)
         mock_deployment = self.create_mock_deployment(ready_replicas=0, total_replicas=1)
+        mock_deployment.status.unavailable_replicas = 1
+        mock_deployment.status.conditions = None
 
         with patch(
             "nimbletools_control_plane.routes.servers.client.CustomObjectsApi"
@@ -112,10 +114,16 @@ class TestServerListingRobustness:
                 mock_mcpservices
             )
 
-            with patch(
-                "nimbletools_control_plane.routes.servers.get_deployment_if_exists"
-            ) as mock_get_deployment:
+            with (
+                patch(
+                    "nimbletools_control_plane.routes.servers.get_deployment_if_exists"
+                ) as mock_get_deployment,
+                patch(
+                    "nimbletools_control_plane.routes.servers._check_pod_failure_status"
+                ) as mock_check_pod,
+            ):
                 mock_get_deployment.return_value = mock_deployment
+                mock_check_pod.return_value = False  # No pod failures
 
                 result = await list_workspace_servers(
                     workspace_id=mock_workspace_id,
@@ -163,10 +171,10 @@ class TestServerListingRobustness:
                     namespace_name=mock_namespace_name,
                 )
 
-                # Should not crash and fall back to MCPService status
+                # Should not crash and return Pending when deployment has no status
                 assert result.total == 1
                 server = result.servers[0]
-                assert server.status == "Starting"  # Should fall back to MCPService status
+                assert server.status == "Pending"  # Returns Pending when deployment.status is None
 
     @pytest.mark.asyncio
     async def test_list_servers_with_deployment_none_replicas(
@@ -181,6 +189,8 @@ class TestServerListingRobustness:
 
         # Create deployment with None replica counts (can happen during very early startup)
         mock_deployment = self.create_mock_deployment(ready_replicas=None, total_replicas=None)
+        mock_deployment.status.unavailable_replicas = None
+        mock_deployment.status.conditions = None
 
         with patch(
             "nimbletools_control_plane.routes.servers.client.CustomObjectsApi"
@@ -238,10 +248,10 @@ class TestServerListingRobustness:
                     namespace_name=mock_namespace_name,
                 )
 
-                # Should still return the server with fallback status
+                # Should still return the server with Unknown status on errors
                 assert result.total == 1
                 server = result.servers[0]
-                assert server.status == "Error"  # Should fall back to MCPService status
+                assert server.status == "Unknown"  # Returns Unknown on exceptions
 
     @pytest.mark.asyncio
     async def test_list_servers_with_kubernetes_operation_error(
@@ -282,18 +292,18 @@ class TestServerListingRobustness:
                     namespace_name=mock_namespace_name,
                 )
 
-                # Should still return both servers with fallback statuses
+                # Should still return both servers with Unknown status on errors
                 assert result.total == 2
                 assert len(result.servers) == 2
 
-                # Both servers should have their MCPService status as fallback
+                # Both servers should have Unknown status due to the error
                 servers_by_id = {s.id: s for s in result.servers}
                 assert (
-                    servers_by_id["echo-server"].status == "Pending"
-                )  # Falls back to MCPService status
+                    servers_by_id["echo-server"].status == "Unknown"
+                )  # Returns Unknown on KubernetesOperationError
                 assert (
-                    servers_by_id["finnhub-server"].status == "Running"
-                )  # Falls back to MCPService status
+                    servers_by_id["finnhub-server"].status == "Unknown"
+                )  # Returns Unknown on KubernetesOperationError
 
     @pytest.mark.asyncio
     async def test_list_servers_with_multiple_servers_mixed_states(
@@ -311,9 +321,15 @@ class TestServerListingRobustness:
         def mock_get_deployment_side_effect(deployment_name, namespace):
             """Mock different deployment states for different servers."""
             if "running-server" in deployment_name:
-                return self.create_mock_deployment(ready_replicas=1, total_replicas=1)
+                deployment = self.create_mock_deployment(ready_replicas=1, total_replicas=1)
+                deployment.status.unavailable_replicas = 0
+                deployment.status.conditions = None
+                return deployment
             elif "pending-server" in deployment_name:
-                return self.create_mock_deployment(ready_replicas=0, total_replicas=1)
+                deployment = self.create_mock_deployment(ready_replicas=0, total_replicas=1)
+                deployment.status.unavailable_replicas = 1
+                deployment.status.conditions = None
+                return deployment
             elif "error-server" in deployment_name:
                 # Simulate an error for this server
                 raise Exception("Deployment API error")
@@ -326,10 +342,16 @@ class TestServerListingRobustness:
                 mock_mcpservices
             )
 
-            with patch(
-                "nimbletools_control_plane.routes.servers.get_deployment_if_exists"
-            ) as mock_get_deployment:
+            with (
+                patch(
+                    "nimbletools_control_plane.routes.servers.get_deployment_if_exists"
+                ) as mock_get_deployment,
+                patch(
+                    "nimbletools_control_plane.routes.servers._check_pod_failure_status"
+                ) as mock_check_pod,
+            ):
                 mock_get_deployment.side_effect = mock_get_deployment_side_effect
+                mock_check_pod.return_value = False  # No pod failures
 
                 result = await list_workspace_servers(
                     workspace_id=mock_workspace_id,
@@ -347,8 +369,8 @@ class TestServerListingRobustness:
                 assert servers_by_id["running-server"].status == "Running"
                 assert servers_by_id["pending-server"].status == "Pending"
                 assert (
-                    servers_by_id["error-server"].status == "Error"
-                )  # Falls back to MCPService status
+                    servers_by_id["error-server"].status == "Unknown"
+                )  # Returns Unknown on exceptions
 
     @pytest.mark.asyncio
     async def test_list_servers_kubernetes_api_completely_down(
