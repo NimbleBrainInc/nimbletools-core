@@ -176,11 +176,11 @@ ntcli ws delete myfirstworkspace
 
 ```json
 {
-  "$schema": "https://registry.nimbletools.ai/schemas/2025-09-22/nimbletools-server.schema.json",
+  "$schema": "https://registry.nimbletools.ai/schemas/2025-12-11/nimbletools-server.schema.json",
   "name": "your-org/your-server",
   "version": "1.0.0",
+  "title": "Your Server",
   "description": "Your MCP server description",
-  "status": "active",
   "packages": [
     {
       "registryType": "oci",
@@ -195,6 +195,7 @@ ntcli ws delete myfirstworkspace
   ],
   "_meta": {
     "ai.nimbletools.mcp/v1": {
+      "status": "active",
       "container": {
         "healthCheck": {
           "path": "/health",

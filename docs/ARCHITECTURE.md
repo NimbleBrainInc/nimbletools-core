@@ -24,7 +24,7 @@ Understand how NimbleTools Core transforms any MCP tool into a production-ready,
 │                     NimbleTools Core Platform                   │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  🎛️  Management Layer                 ⚙️  Automation Layer      │
+│  Management Layer                      Automation Layer         │
 │  ┌─────────────────┐                 ┌──────────────────┐      │
 │  │   REST API      │                 │   MCP Operator   │      │
 │  │                 │                 │                  │      │
@@ -34,7 +34,7 @@ Understand how NimbleTools Core transforms any MCP tool into a production-ready,
 │  └─────────────────┘                 └──────────────────┘      │
 │           ▲                                                     │
 │           │                                                     │
-│  ┌─────────────────┐          🗂️  Service Discovery            │
+│  ┌─────────────────┐             Service Discovery              │
 │  │     ntcli       │          ┌──────────────────┐             │
 │  │                 │          │   MCP Registry   │             │
 │  │ • CLI Commands  │◄─────────┤                  │             │
@@ -43,9 +43,9 @@ Understand how NimbleTools Core transforms any MCP tool into a production-ready,
 │  └─────────────────┘          │ • Community Hub  │             │
 │                               └──────────────────┘             │
 ├─────────────────────────────────────────────────────────────────┤
-│                      🚀 Your MCP Services                      │
+│                         Your MCP Services                       │
 │                                                                 │
-│  📊 Analytics     🗃️ Database      🌐 HTTP Service             │
+│  Analytics        Database          HTTP Service                │
 │  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐           │
 │  │ stdio tool  │   │ Python CLI  │   │ Native HTTP │           │
 │  │ via Adapter │   │ via Adapter │   │ Direct      │           │
@@ -58,7 +58,7 @@ Understand how NimbleTools Core transforms any MCP tool into a production-ready,
 
 ## Core Components
 
-### 🤖 MCP Operator: The Automation Engine
+### MCP Operator: The Automation Engine
 
 **What it does:** Transforms your MCPService declarations into running, healthy services automatically.
 
@@ -88,7 +88,7 @@ ntcli deploy → Control Plane → Operator Watches → Resource Creation → He
  Server Name → MCPService CRD → Deployment + Service → Running Pod → Scaling Decisions
 ```
 
-### 🔌 Universal Adapter: The Compatibility Layer
+### Universal Adapter: The Compatibility Layer
 
 **The problem:** Most MCP tools are command-line utilities using stdio, but modern infrastructure expects HTTP APIs.
 
@@ -116,7 +116,7 @@ JSON Response ← HTTP Response ← stdout ← Tool Output
 curl http://service/mcp -d '{"method": "tools/list"}'
 ```
 
-### 🎛️ Management API: Your Control Center
+### Management API: Your Control Center
 
 **What it provides:** A clean, RESTful interface for managing your entire MCP service ecosystem.
 
@@ -134,13 +134,13 @@ Enterprise → JWT-based authentication with RBAC
 ```
 
 **Essential endpoints:**
-- `GET /api/v1/workspaces` - List all workspaces
-- `POST /api/v1/workspaces/{id}/servers` - Deploy new service
-- `GET /api/v1/workspaces/{id}/servers` - List services
+- `GET /v1/workspaces` - List all workspaces
+- `POST /v1/workspaces/{workspace_id}/servers` - Deploy new service
+- `GET /v1/workspaces/{workspace_id}/servers` - List services
 - `GET /health` - System health check
 - `GET /docs` - Interactive API documentation
 
-### 📋 Server Definition: Your Service Declaration
+### Server Definition: Your Service Declaration
 
 **What it is:** A standardized JSON schema that describes your MCP server, its capabilities, and deployment requirements.
 
@@ -149,11 +149,11 @@ Enterprise → JWT-based authentication with RBAC
 **Basic structure (`server.json`):**
 ```json
 {
-  "$schema": "https://registry.nimbletools.ai/schemas/2025-09-22/nimbletools-server.schema.json",
+  "$schema": "https://registry.nimbletools.ai/schemas/2025-12-11/nimbletools-server.schema.json",
   "name": "ai.nimbletools/my-service",
   "version": "1.0.0",
+  "title": "My Service",
   "description": "My MCP service",
-  "status": "active",
   "packages": [
     {
       "registryType": "oci",
@@ -166,6 +166,7 @@ Enterprise → JWT-based authentication with RBAC
   ],
   "_meta": {
     "ai.nimbletools.mcp/v1": {
+      "status": "active",
       "deployment": {
         "protocol": "http",
         "port": 8000
@@ -195,7 +196,7 @@ ntcli srv deploy ./server.json
 
 **What you get:** Real-time visibility into service health through `ntcli srv info` and `ntcli srv list`.
 
-### 🗂️ MCP Registry: Service Discovery Layer
+### MCP Registry: Service Discovery Layer
 
 **The problem:** MCP services are scattered across repositories, blog posts, and documentation. Finding and deploying the right service is time-consuming and error-prone.
 
@@ -207,16 +208,17 @@ Each server in the registry has a `server.json` file following the standard sche
 
 ```json
 {
-  "$schema": "https://registry.nimbletools.ai/schemas/2025-09-22/nimbletools-server.schema.json",
+  "$schema": "https://registry.nimbletools.ai/schemas/2025-12-11/nimbletools-server.schema.json",
   "name": "ai.nimbletools/web-scraper",
   "version": "1.2.0",
+  "title": "Web Scraper",
   "description": "Extract content from web pages",
-  "status": "active",
   "packages": [...],
   "_meta": {
     "ai.nimbletools.mcp/v1": {
-      "display": {
-        "category": "data-extraction",
+      "status": "active",
+      "registry": {
+        "categories": ["data-extraction"],
         "tags": ["web", "scraping", "content"]
       },
       "capabilities": {
@@ -239,7 +241,7 @@ Each server in the registry has a `server.json` file following the standard sche
 - **Version Management:** Semantic versioning for service updates
 - **Team Collaboration:** Shared service catalogs for organizations
 
-### 🖥️ ntcli: Developer Experience Layer
+### ntcli: Developer Experience Layer
 
 **The vision:** Every operation available through the REST API should be accessible via an intuitive command-line interface.
 
@@ -286,7 +288,7 @@ ntcli server status analytics-engine --workspace production
 
 ## Deployment Patterns
 
-### 🌐 HTTP-Native Services
+### HTTP-Native Services
 **For services built with HTTP APIs from the start**
 
 ```json
@@ -315,7 +317,7 @@ ntcli server status analytics-engine --workspace production
 - Kubernetes Service routes traffic to your port
 - Built-in health checks and load balancing
 
-### 💻 Command-Line Tools
+### Command-Line Tools
 **For existing stdio-based MCP tools**
 
 Server definitions specify stdio configuration in the `_meta` section, which the Universal Adapter uses to wrap the CLI tool:
@@ -347,7 +349,7 @@ Server definitions specify stdio configuration in the `_meta` section, which the
 
 ## Organization Patterns
 
-### 🏠 Simple Setup (Open Source)
+### Simple Setup (Open Source)
 **Perfect for individuals and small teams**
 
 - Core components in `nimbletools-system` namespace
@@ -355,7 +357,7 @@ Server definitions specify stdio configuration in the `_meta` section, which the
 - Cluster-wide permissions for simplicity
 - Single management interface
 
-### 🏢 Enterprise Setup
+### Enterprise Setup
 **Designed for organizations with multiple teams**
 
 - Each team gets their own workspace (namespace)
@@ -365,7 +367,7 @@ Server definitions specify stdio configuration in the `_meta` section, which the
 
 ## Scaling Intelligence
 
-### ⚡ Serverless Mode (Scale-to-Zero)
+### Serverless Mode (Scale-to-Zero)
 **Pay nothing when not in use, instant scaling when needed**
 
 Scaling behavior is configured in the server definition's `_meta` section:
@@ -389,7 +391,7 @@ Scaling behavior is configured in the server definition's `_meta` section:
 3. **Cold start:** ~10-30 seconds to first response (cached images)
 4. **Auto scale-down:** Returns to zero after idle period
 
-### 📈 Performance Optimization
+### Performance Optimization
 
 **Smart defaults that just work:**
 - CPU and memory limits based on container requirements
@@ -399,7 +401,7 @@ Scaling behavior is configured in the server definition's `_meta` section:
 
 ## Security by Design
 
-### 🔒 Defense in Depth
+### Defense in Depth
 **Security isn't an afterthought - it's built into every layer**
 
 **Container Security:**
@@ -431,7 +433,7 @@ These are configured in the operator, not in individual server definitions.
 
 ## Built-in Observability
 
-### 📊 What You Can Monitor
+### What You Can Monitor
 **Comprehensive visibility without complex setup**
 
 **Service Health:**
@@ -452,7 +454,7 @@ These are configured in the operator, not in individual server definitions.
 - Cost optimization opportunities
 - User adoption metrics
 
-### 🔍 Troubleshooting Made Easy
+### Troubleshooting Made Easy
 
 **Structured logging with correlation:**
 ```json
@@ -473,7 +475,7 @@ These are configured in the operator, not in individual server definitions.
 
 ## Extensibility
 
-### 🔧 Customization Points
+### Customization Points
 **Built for extension without modification**
 
 **Custom Authentication:**
@@ -510,7 +512,7 @@ The control plane supports validation webhooks for custom deployment policies (c
 
 ## How Everything Works Together
 
-### 🚀 Service Deployment Journey
+### Service Deployment Journey
 **From `ntcli deploy` to running service**
 
 ```
@@ -523,7 +525,7 @@ The control plane supports validation webhooks for custom deployment policies (c
 7. You: Service visible in `ntcli srv list`
 ```
 
-### ⚡ Request Processing Flow
+### Request Processing Flow
 **What happens when someone uses your MCP service**
 
 ```
@@ -534,7 +536,7 @@ MCP Client Request → Kubernetes Service → Load Balancer → Healthy Pod
     Tool Response ← HTTP Response ← stdout ← Tool Completes
 ```
 
-### 🔄 Serverless Scaling
+### Serverless Scaling
 **The magic of scale-to-zero**
 
 ```
@@ -549,7 +551,7 @@ New request arrives → Operator scales to 1 → Pod starts → Service ready
 
 ## Configuration Management
 
-### 🎯 Environment-Specific Configuration
+### Environment-Specific Configuration
 **One codebase, many environments**
 
 ```bash
@@ -569,7 +571,7 @@ New request arrives → Operator scales to 1 → Pod starts → Service ready
 - Scaling policies (dev: fixed, prod: auto)
 - Monitoring level (dev: basic, prod: comprehensive)
 
-### 🔐 Secrets Management
+### Secrets Management
 **Keep sensitive data secure**
 
 Secrets are managed through the control plane API and workspace secrets:
@@ -586,7 +588,7 @@ Server definitions can declare required secrets in their metadata.
 
 ## Production Reliability
 
-### 🏗️ High Availability by Default
+### High Availability by Default
 **Built for uptime, not complexity**
 
 **Core components:**
@@ -599,7 +601,7 @@ Server definitions can declare required secrets in their metadata.
 - Service configurations are declarative (reproducible)
 - No single points of failure in request path
 
-### 🔄 Disaster Recovery
+### Disaster Recovery
 **Simple backup and restore**
 
 ```bash
@@ -616,7 +618,7 @@ Server definitions in the registry serve as the source of truth for disaster rec
 
 ## Performance at Scale
 
-### 📈 Resource Optimization
+### Resource Optimization
 **Efficient by design**
 
 **Smart resource management:**
@@ -656,7 +658,7 @@ Production servers enable auto-scaling:
 }
 ```
 
-### 🚀 Network Performance
+### Network Performance
 **Fast by default, faster with tuning**
 
 **Built-in optimizations:**

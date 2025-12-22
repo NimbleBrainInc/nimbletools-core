@@ -1,6 +1,6 @@
 # Contributing to NimbleTools Core
 
-Thank you for your interest in contributing to NimbleTools Core! This document provides guidelines and information for contributors.
+Thank you for your interest in contributing to NimbleTools Core!
 
 ## Code of Conduct
 
@@ -10,23 +10,15 @@ This project adheres to a Code of Conduct. By participating, you are expected to
 
 ### Development Setup
 
-1. Clone the repository:
-
 ```bash
-git clone https://github.com/nimblebrain/nimbletools-core.git
+git clone https://github.com/NimbleBrainInc/nimbletools-core.git
 cd nimbletools-core
-```
 
-2. Set up local development environment:
+# Full dev cycle: verify, build, deploy to local k3d
+make dev
 
-```bash
-./scripts/dev-setup.sh
-```
-
-3. Verify installation:
-
-```bash
-kubectl get pods -n nimbletools-core-system
+# Verify installation
+kubectl get pods -n nimbletools-system
 ```
 
 ### Development Workflow
@@ -34,145 +26,123 @@ kubectl get pods -n nimbletools-core-system
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature/your-feature-name`
 3. Make your changes
-4. Test your changes locally
-5. Commit your changes: `git commit -m "Description of your changes"`
-6. Push to your fork: `git push origin feature/your-feature-name`
+4. Verify: `make verify`
+5. Test locally: `make dev`
+6. Commit and push
 7. Open a Pull Request
 
-## Development Guidelines
+## Code Quality
 
-### Code Quality Standards
-
-- **Type Annotations**: All Python functions must have complete type annotations
-- **Linting**: Code must pass `ruff check` and `black` formatting
-- **Testing**: New features must include appropriate tests
-- **Documentation**: Update documentation for user-facing changes
-
-### Python Code Standards
+### Quick Verification
 
 ```bash
-# Format code
-black .
+# Run all checks (lint, type-check, test)
+make verify
 
-# Check linting
-ruff check --fix .
-
-# Type checking
-mypy --ignore-missing-imports .
+# Or per-component
+cd control-plane && make verify
+cd mcp-operator && make verify
 ```
 
-### Kubernetes Manifests
+### Manual Commands
 
-- Use consistent naming conventions (kebab-case for resources)
-- Include proper labels and annotations
-- Test manifests in local k3d cluster before submitting
+```bash
+# Format
+uv run ruff format .
 
-### Docker Images
+# Lint
+uv run ruff check .
 
-- Multi-stage builds for minimal image size
-- Non-root user for security
-- Proper health checks
-- Clear documentation of build process
+# Type check
+uv run mypy src/
+
+# Test
+uv run pytest
+```
+
+### Standards
+
+For detailed coding standards (imports, testing, API patterns, logging), see:
+- [Coding Standards](/docs/CODING_STANDARDS.md)
+- [Platform Principles](/docs/PLATFORM_PRINCIPLES.md)
 
 ## Testing
 
 ### Local Testing
 
 ```bash
-# Build and install locally
-./scripts/dev-setup.sh
+# Full dev cycle with smoke tests
+make dev
 
-# Test basic functionality (Update workspace!)
-kubectl apply -f examples/everything.yaml
-kubectl get mcpservices
+# Quick rebuild (skip tests)
+make dev-quick
 
-# Test API endpoints
-curl http://nimbletools.dev/health
+# Component tests only
+cd control-plane && make verify
 ```
 
-### Integration Tests
+### Manual Testing
 
 ```bash
-# Run full installation test
-time ./scripts/install.sh
+# Deploy test service
+kubectl apply -f examples/echo-mcp.yaml
+kubectl get mcpservices
 
-# Verify all components are working
-./scripts/test-installation.sh
+# Test API
+curl http://api.nimbletools.dev/health
 ```
 
 ## Pull Request Process
 
-1. **Small, Focused Changes**: Keep PRs focused on a single feature or fix
-2. **Clear Description**: Describe what your PR does and why
-3. **Tests**: Include tests for new functionality
-4. **Documentation**: Update documentation if needed
-5. **Review Process**: Address reviewer feedback promptly
+### Requirements
 
-### PR Checklist
+- Small, focused changes (one feature or fix per PR)
+- Tests pass: `make verify`
+- Documentation updated if needed
+- Clear commit messages
 
-- [ ] Code follows project style guidelines
-- [ ] Tests pass locally
+### Checklist
+
+- [ ] `make verify` passes
+- [ ] Tests added for new functionality
 - [ ] Documentation updated (if applicable)
-- [ ] PR description clearly explains the changes
-- [ ] Commits have clear, descriptive messages
+- [ ] PR description explains the changes
 
 ## Architecture Guidelines
 
-### Operator Development
+### Key Principle
 
-- Follow the existing pattern using Kopf framework
-- Keep operator logic simple and focused
-- Use proper error handling and logging
-- Test operator behavior with various MCPService configurations
+**No server-specific logic in platform code.** All server behavior comes from registry definitions. See [Platform Principles](/docs/PLATFORM_PRINCIPLES.md).
 
-### API Development
+### Component Development
 
-- Use FastAPI with proper async patterns
-- Implement proper error handling and status codes
-- Follow RESTful API conventions
-- Include OpenAPI documentation
-
-### Helm Chart Updates
-
-- Test chart changes in local k3d cluster
-- Follow Helm best practices
-- Update default values appropriately
-- Include proper RBAC permissions
+**Operator**: Kopf framework, generic resource handling
+**Control Plane**: FastAPI, Pydantic models, async patterns
+**Helm Chart**: Test in local k3d before submitting
 
 ## Issue Reporting
 
-When reporting issues, please include:
-
-1. **Environment**: Kubernetes version, OS, installation method
-2. **Steps to Reproduce**: Clear steps to reproduce the issue
-3. **Expected Behavior**: What you expected to happen
-4. **Actual Behavior**: What actually happened
-5. **Logs**: Relevant logs from pods/services
-6. **Configuration**: Any custom configuration used
-
-## Documentation
-
-- Keep README.md up to date with significant changes
-- Update examples if API changes
-- Include inline code documentation
-- Consider adding tutorials for complex features
+Include:
+1. Environment (K8s version, OS, installation method)
+2. Steps to reproduce
+3. Expected vs actual behavior
+4. Relevant logs (`kubectl logs -l app=...`)
+5. Configuration used
 
 ## Release Process
 
-Releases are managed by maintainers. The process includes:
+See [Release Process](/docs/RELEASE_PROCESS.md) for details.
 
-1. Version bump in appropriate files
-2. Update CHANGELOG.md
-3. Create GitHub release with release notes
-4. Build and push Docker images
-5. Update Helm chart repository
+Releases are managed by maintainers:
+1. `make set-version VERSION=x.y.z`
+2. `make verify`
+3. `make release`
 
 ## Community
 
-- **Discussions**: Use GitHub Discussions for questions and ideas
-- **Discord**: Join our Discord server for real-time chat
-- **Issues**: Use GitHub Issues for bugs and feature requests
+- **Discussions**: GitHub Discussions
+- **Issues**: GitHub Issues for bugs and feature requests
 
 ## License
 
-By contributing to NimbleTools Core, you agree that your contributions will be licensed under the Apache 2.0 License.
+By contributing, you agree that your contributions will be licensed under the Apache 2.0 License.

@@ -36,6 +36,25 @@ spec:
                 description:
                   type: string
                   description: "Human-readable description of the service"
+                title:
+                  type: string
+                  description: "Human-readable display name (2025-12-11 schema)"
+                icons:
+                  type: array
+                  description: "Array of icon objects for branding (2025-12-11 schema)"
+                  items:
+                    type: object
+                    required:
+                      - src
+                    properties:
+                      src:
+                        type: string
+                        description: "Icon URL"
+                      sizes:
+                        type: array
+                        description: "Icon sizes (e.g., '64x64')"
+                        items:
+                          type: string
                 replicas:
                   type: integer
                   minimum: 0
@@ -185,9 +204,9 @@ spec:
                             description:
                               type: string
                               description: "Description of the environment variable"
-                            example:
+                            placeholder:
                               type: string
-                              description: "Example value for documentation"
+                              description: "Placeholder value for documentation"
                 resources:
                   type: object
                   description: "Resource requirements and limits"

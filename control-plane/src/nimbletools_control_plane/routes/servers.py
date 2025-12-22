@@ -155,8 +155,11 @@ def _serialize_packages(packages: list[Any] | None) -> list[dict[str, Any]]:
         return []
 
     try:
+        # Use mode="json" to convert HttpUrl and other Pydantic types to JSON-serializable strings
+        # This prevents "'HttpUrl' object has no attribute 'openapi_types'" errors when
+        # the Kubernetes client tries to serialize the CRD body
         serialized = [
-            pkg.model_dump(exclude_none=False, by_alias=False, mode="python") for pkg in packages
+            pkg.model_dump(exclude_none=False, by_alias=False, mode="json") for pkg in packages
         ]
         logger.info("Serialized %d packages successfully", len(serialized))
         return serialized
@@ -214,6 +217,11 @@ def _create_mcpservice_spec_from_mcp_server(
     if routing:
         default_routing.update(routing)
 
+    # Serialize icons if present (use mode="json" to convert HttpUrl to strings)
+    icons_data = []
+    if mcp_server.icons:
+        icons_data = [icon.model_dump(exclude_none=True, mode="json") for icon in mcp_server.icons]
+
     return {
         "apiVersion": "mcp.nimbletools.dev/v1",
         "kind": "MCPService",
@@ -234,6 +242,8 @@ def _create_mcpservice_spec_from_mcp_server(
             "resources": resources,
             "routing": default_routing,
             "scaling": default_scaling,
+            "title": mcp_server.title,
+            "icons": icons_data,
         },
     }
 
