@@ -142,11 +142,17 @@ tag: ## Create and push git tag for current version
 	@git push origin v$(VERSION)
 	@echo "Git tag v$(VERSION) created and pushed"
 
-release: verify tag publish ## Complete release workflow (verify, tag, publish)
+github-release: ## Create GitHub release for current version
+	@echo "Creating GitHub release v$(VERSION)..."
+	@gh release create v$(VERSION) --title "v$(VERSION)" --generate-notes
+	@echo "GitHub release v$(VERSION) created"
+
+release: verify tag publish github-release ## Complete release workflow (verify, tag, publish, github release)
 	@echo ""
 	@echo "Release $(VERSION) complete!"
 	@echo ""
 	@echo "Published:"
 	@echo "  Git tag: v$(VERSION)"
+	@echo "  GitHub release: https://github.com/NimbleBrainInc/nimbletools-core/releases/tag/v$(VERSION)"
 	@echo "  Docker images: $(DOCKER_REGISTRY)/nimbletools/*:$(VERSION)"
 	@echo "  Helm chart: oci://$(REGISTRY)/charts/$(CHART_NAME):$(VERSION)"
