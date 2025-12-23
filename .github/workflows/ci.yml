@@ -17,7 +17,7 @@ jobs:
       rbac-controller: ${{ steps.changes.outputs.rbac-controller }}
       chart: ${{ steps.changes.outputs.chart }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v3
         id: changes
         with:
@@ -41,7 +41,7 @@ jobs:
     if: needs.changes.outputs.control-plane == 'true'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v6
@@ -72,7 +72,7 @@ jobs:
     if: needs.changes.outputs.mcp-operator == 'true'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v6
@@ -103,7 +103,7 @@ jobs:
     if: needs.changes.outputs.universal_adapter == 'true'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v6
@@ -134,7 +134,7 @@ jobs:
     if: needs.changes.outputs.rbac-controller == 'true'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Install uv
         uses: astral-sh/setup-uv@v6
@@ -165,7 +165,7 @@ jobs:
     if: needs.changes.outputs.chart == 'true'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Install Helm
         uses: azure/setup-helm@v4
@@ -194,7 +194,7 @@ jobs:
     if: needs.changes.outputs.control-plane == 'true' && github.event_name == 'push'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -222,7 +222,7 @@ jobs:
     if: needs.changes.outputs.mcp-operator == 'true' && github.event_name == 'push'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
