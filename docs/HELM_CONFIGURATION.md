@@ -254,7 +254,7 @@ controlPlane:
 
   image:
     repository: nimbletools/control-plane
-    tag: "0.2.1"
+    tag: "0.3.0"
     pullPolicy: IfNotPresent
 
   service:
@@ -283,7 +283,7 @@ operator:
 
   image:
     repository: nimbletools/mcp-operator
-    tag: "0.2.1"
+    tag: "0.3.0"
 
   config:
     logLevel: "info"
@@ -309,7 +309,7 @@ rbacController:
 
   image:
     repository: nimbletools/rbac-controller
-    tag: "0.2.1"
+    tag: "0.3.0"
 
   resources:
     limits:

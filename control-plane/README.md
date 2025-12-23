@@ -19,7 +19,7 @@ The NimbleTools Control Plane API is a FastAPI-based REST API that provides mana
 
 The control plane uses a pluggable provider system for authentication and authorization. All workspaces are isolated by organization with automatic filtering and access control.
 
-**See [provider-system.md](../docs/provider-system.md) for complete provider configuration details.**
+**See [AUTHENTICATION.md](../docs/AUTHENTICATION.md) for complete provider configuration details.**
 
 Quick start with community provider (no authentication):
 
@@ -259,7 +259,7 @@ Required Kubernetes labels on workspace namespaces:
 
 ## Documentation
 
-- **[Provider System](../docs/provider-system.md)**: Authentication and authorization configuration
+- **[Provider System](../docs/AUTHENTICATION.md)**: Authentication and authorization configuration
 - **[Server Logs](../docs/server-logs.md)**: Accessing and streaming MCP server logs
 
 ## Related Services

@@ -1,8 +1,8 @@
 apiVersion: v2
 name: nimbletools-core
 description: Open-source MCP service runtime for Kubernetes
-version: 0.2.3
-appVersion: "0.2.3"
+version: 0.3.0
+appVersion: "0.3.0"
 home: https://www.nimbletools.ai
 sources:
   - https://github.com/nimblebrain/nimbletools-core

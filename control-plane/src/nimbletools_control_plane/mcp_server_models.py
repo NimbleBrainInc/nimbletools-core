@@ -21,6 +21,14 @@ class Repository(BaseModel):
     subfolder: str | None = Field(
         default=None, description="Optional relative path from repository root"
     )
+    # Note: branch field moved to _meta.ai.nimbletools.mcp/v1.repository.branch in 2025-12-11 schema
+
+
+class Icon(BaseModel):
+    """Icon definition for server branding (2025-12-11 schema)"""
+
+    src: HttpUrl = Field(..., description="Icon URL")
+    sizes: list[str] = Field(default_factory=list, description="Icon sizes (e.g., '64x64')")
 
 
 class TransportProtocol(BaseModel):
@@ -42,7 +50,7 @@ class EnvironmentVariable(BaseModel):
     description: str | None = Field(
         default=None, description="Description of the environment variable"
     )
-    example: str | None = Field(default=None, description="Example value for documentation")
+    placeholder: str | None = Field(default=None, description="Placeholder value for documentation")
 
 
 class Package(BaseModel):
@@ -247,6 +255,12 @@ class RegistryMetadata(BaseModel):
     showcase: Showcase | None = Field(default=None)
 
 
+class RepositoryExtension(BaseModel):
+    """Repository extension metadata in _meta (2025-12-11 schema)"""
+
+    branch: str | None = Field(default=None, description="Repository branch")
+
+
 class NimbleToolsRuntime(BaseModel):
     """NimbleTools-specific runtime configuration"""
 
@@ -258,6 +272,13 @@ class NimbleToolsRuntime(BaseModel):
     networking: Networking = Field(default_factory=Networking)
     deployment: Deployment | None = Field(default=None)
     registry: RegistryMetadata | None = Field(default=None)
+    # Fields relocated from root in 2025-12-11 schema
+    status: Literal["active", "deprecated", "deleted"] | None = Field(
+        default=None, description="Server lifecycle status"
+    )
+    repository: RepositoryExtension | None = Field(
+        default=None, description="Repository extension metadata"
+    )
 
 
 class ServerMetadata(BaseModel):
@@ -272,7 +293,7 @@ class ServerMetadata(BaseModel):
 
 
 class MCPServer(BaseModel):
-    """MCP Server definition based on NimbleBrain registry schema"""
+    """MCP Server definition based on NimbleBrain registry schema (2025-12-11)"""
 
     # Core MCP server fields
     name: str = Field(
@@ -286,9 +307,10 @@ class MCPServer(BaseModel):
         ..., min_length=1, max_length=100, description="Clear human-readable explanation"
     )
     version: str = Field(..., max_length=255, description="Version string for this server")
-    status: Literal["active", "deprecated", "deleted"] = Field(
-        default="active", description="Server lifecycle status"
-    )
+
+    # New fields in 2025-12-11 schema (relocated from _meta)
+    title: str | None = Field(default=None, description="Human-readable display name")
+    icons: list[Icon] = Field(default_factory=list, description="Array of icon objects")
 
     # Optional fields
     repository: Repository | None = Field(default=None, description="Repository metadata")
@@ -309,6 +331,20 @@ class MCPServer(BaseModel):
         if self.meta and self.meta.ai_nimbletools_mcp_v1:
             return self.meta.ai_nimbletools_mcp_v1
         return None
+
+    @property
+    def status(self) -> Literal["active", "deprecated", "deleted"]:
+        """Get server status from _meta (2025-12-11 schema location)"""
+        if self.nimbletools_runtime and self.nimbletools_runtime.status:
+            return self.nimbletools_runtime.status
+        return "active"
+
+    @property
+    def display_name(self) -> str:
+        """Get human-readable display name (title or server name)"""
+        if self.title:
+            return self.title
+        return self.name.split("/")[-1]
 
 
 class MCPServerCreateRequest(BaseModel):

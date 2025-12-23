@@ -22,6 +22,7 @@ PUSH="false"
 LOCAL_REGISTRY_PORT="5000"
 K3D_CLUSTER=""
 DRY_RUN="false"
+NO_LATEST="false"
 
 # Logging functions
 log_info() {
@@ -58,6 +59,7 @@ OPTIONS:
     --dev                   Build for local registry (localhost:5000)
     --production            Build and push to Docker Hub (docker.io/nimbletools)
     --push                  Push to registry (implied by --production and --dev)
+    --no-latest             Don't update the :latest tag (for dev builds)
     --dry-run               Show what would be built without executing
     -h, --help              Show this help
 
@@ -120,7 +122,12 @@ parse_args() {
                 ;;
             --local)
                 REGISTRY=""
-                PLATFORMS="linux/amd64"  # Single platform for local
+                # Use native platform for local builds (detect ARM vs x86)
+                if [[ "$(uname -m)" == "arm64" || "$(uname -m)" == "aarch64" ]]; then
+                    PLATFORMS="linux/arm64"
+                else
+                    PLATFORMS="linux/amd64"
+                fi
                 PUSH="false"
                 shift
                 ;;
@@ -144,6 +151,10 @@ parse_args() {
                 ;;
             --dry-run)
                 DRY_RUN="true"
+                shift
+                ;;
+            --no-latest)
+                NO_LATEST="true"
                 shift
                 ;;
             -h|--help)
@@ -193,8 +204,31 @@ check_prerequisites() {
             log_error "k3d not found. Please install k3d for local builds."
             exit 1
         fi
-        
-        if ! k3d cluster list | grep -q "$K3D_CLUSTER"; then
+
+        # Retry cluster check a few times (handles race condition after creation)
+        local retries=3
+        local found=false
+        for i in $(seq 1 $retries); do
+            # Temporarily disable errexit for grep (returns 1 when no match)
+            # Using command substitution to avoid pipefail issues
+            set +e
+            local cluster_list
+            cluster_list=$(k3d cluster list 2>/dev/null)
+            echo "$cluster_list" | grep -q "^$K3D_CLUSTER "
+            local grep_result=$?
+            set -e
+
+            if [[ $grep_result -eq 0 ]]; then
+                found=true
+                break
+            fi
+            if [[ $i -lt $retries ]]; then
+                log_info "Waiting for cluster '$K3D_CLUSTER' to be ready... (attempt $i/$retries)"
+                sleep 2
+            fi
+        done
+
+        if [[ "$found" != "true" ]]; then
             log_error "k3d cluster '$K3D_CLUSTER' not found."
             log_error "Create it with: k3d cluster create $K3D_CLUSTER --wait"
             exit 1
@@ -244,8 +278,8 @@ build_image() {
     build_cmd="$build_cmd --platform $PLATFORMS"
     build_cmd="$build_cmd -t $full_image_name"
     
-    # Add latest tag for production
-    if [[ "$REGISTRY" == "docker.io" && "$TAG" != "latest" ]]; then
+    # Add latest tag for production (skip if --no-latest flag is set)
+    if [[ "$REGISTRY" == "docker.io" && "$TAG" != "latest" && "$NO_LATEST" != "true" ]]; then
         if [[ -n "$REGISTRY" ]]; then
             build_cmd="$build_cmd -t $REGISTRY/$NAMESPACE/$component:latest"
         else

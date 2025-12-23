@@ -5,6 +5,36 @@ All notable changes to NimbleTools Core will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2025-12-22
+
+### Changed
+
+- Updated to MCP registry schema version 2025-12-11
+- `status` field moved from root to `_meta.ai.nimbletools.mcp/v1.status`
+- `example` field renamed to `placeholder` in environment variables
+- Added `title` and `icons` fields to server schema
+
+### Added
+
+- `docs/CODING_STANDARDS.md` for Python, testing, and API standards
+- `docs/PLATFORM_PRINCIPLES.md` for platform architecture guidelines
+- `docs/RELEASE_PROCESS.md` for version and release workflows
+- `scripts/dev.sh` for unified development workflow
+- `make dev` command for full development cycle (verify, build, deploy, smoke test)
+
+### Improved
+
+- Condensed `CLAUDE.md` for better token efficiency (620 lines to 79 lines)
+- Reorganized documentation with on-demand loading pattern
+- Updated `CONTRIBUTING.md` with current tooling (uv, ruff, make verify)
+- Fixed API endpoint paths in documentation (`/v1/` not `/api/v1/`)
+- Removed decorative emojis from documentation
+
+### Removed
+
+- `PUBLISHING.md` (merged into `docs/RELEASE_PROCESS.md`)
+- `scripts/dev-setup.sh` (replaced by `scripts/dev.sh`)
+
 ## [0.2.4] - 2025-11-10
 
 ### Fixed

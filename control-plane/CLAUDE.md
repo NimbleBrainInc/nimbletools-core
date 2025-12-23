@@ -14,7 +14,7 @@ The goal is to ensure code is:
 
 - **Centralized documentation**: All platform documentation should be stored in `/docs` at the repository root, not in component-specific directories
 - **Single source of truth**: Avoid duplicating documentation across components
-- **Cross-references**: Use relative paths to link between documents (e.g., `../docs/provider-system.md`)
+- **Cross-references**: Use relative paths to link between documents (e.g., `../docs/AUTHENTICATION.md`)
 
 ---
 
