@@ -81,6 +81,104 @@ class TestExtractContainerConfig:
             "port": 8000,
         }
 
+    def test_extract_container_config_with_mcpb_package(self):
+        """Test extraction with MCPB package uses base image and bundle URL."""
+        package = Mock(spec=Package)
+        package.registryType = "mcpb"
+        package.identifier = "mcp-echo"
+        package.version = "1.0.0"
+        package.registryBaseUrl = "https://github.com/NimbleBrainInc/mcp-echo/releases/download"
+        package.sha256 = None  # No hash provided
+
+        runtime = Mock(spec=NimbleToolsRuntime)
+        runtime.runtime = "python:3.14"
+        runtime.container = None
+
+        mcp_server = Mock(spec=MCPServer)
+        mcp_server.packages = [package]
+        mcp_server.nimbletools_runtime = runtime
+
+        result = _extract_container_config(mcp_server)
+
+        # URL includes architecture suffix (arm64 from k3d cluster)
+        assert result["image"] == "mcpb-python:3.14"
+        assert result["registry"] == "docker.io/nimbletools"
+        assert result["port"] == 8000
+        assert "bundleUrl" in result
+        # Bundle URL includes architecture detected from cluster
+        assert "mcp-echo-v1.0.0-linux-" in result["bundleUrl"]
+
+    def test_extract_container_config_mcpb_node_runtime(self):
+        """Test MCPB with Node.js runtime."""
+        package = Mock(spec=Package)
+        package.registryType = "mcpb"
+        package.identifier = "mcp-github"
+        package.version = "2.0.0"
+        package.registryBaseUrl = "https://github.com/NimbleBrainInc/mcp-github/releases/download"
+        package.sha256 = None  # No hash provided
+
+        runtime = Mock(spec=NimbleToolsRuntime)
+        runtime.runtime = "node:24"
+        runtime.container = None
+
+        mcp_server = Mock(spec=MCPServer)
+        mcp_server.packages = [package]
+        mcp_server.nimbletools_runtime = runtime
+
+        result = _extract_container_config(mcp_server)
+
+        assert result["image"] == "mcpb-node:24"
+        assert result["registry"] == "docker.io/nimbletools"
+        assert result["port"] == 8000
+        assert "bundleUrl" in result
+        assert "mcp-github-v2.0.0-linux-" in result["bundleUrl"]
+
+    def test_extract_container_config_mcpb_missing_runtime_defaults_to_python(self):
+        """Test MCPB defaults to python:3.14 when runtime is missing."""
+        package = Mock(spec=Package)
+        package.registryType = "mcpb"
+        package.identifier = "my-server"
+        package.version = "1.0.0"
+        package.registryBaseUrl = "https://example.com/releases"
+        package.sha256 = None  # No hash provided
+
+        mcp_server = Mock(spec=MCPServer)
+        mcp_server.packages = [package]
+        mcp_server.nimbletools_runtime = None
+
+        result = _extract_container_config(mcp_server)
+
+        assert result["image"] == "mcpb-python:3.14"
+        assert result["registry"] == "docker.io/nimbletools"
+
+    def test_extract_container_config_mcpb_takes_precedence_over_oci(self):
+        """Test that MCPB package is processed before OCI if listed first."""
+        mcpb_package = Mock(spec=Package)
+        mcpb_package.registryType = "mcpb"
+        mcpb_package.identifier = "mcp-echo"
+        mcpb_package.version = "1.0.0"
+        mcpb_package.registryBaseUrl = "https://example.com/releases"
+        mcpb_package.sha256 = None  # No hash provided
+
+        oci_package = Mock(spec=Package)
+        oci_package.registryType = "oci"
+        oci_package.identifier = "old-image"
+        oci_package.version = "1.0.0"
+
+        runtime = Mock(spec=NimbleToolsRuntime)
+        runtime.runtime = "python:3.14"
+        runtime.container = None
+
+        mcp_server = Mock(spec=MCPServer)
+        mcp_server.packages = [mcpb_package, oci_package]
+        mcp_server.nimbletools_runtime = runtime
+
+        result = _extract_container_config(mcp_server)
+
+        # Should use MCPB, not OCI
+        assert result["image"] == "mcpb-python:3.14"
+        assert "bundleUrl" in result
+
     def test_extract_container_config_with_runtime_port(self):
         """Test port override from runtime config."""
         package = Mock(spec=Package)

@@ -74,6 +74,10 @@ class Package(BaseModel):
     environmentVariables: list[EnvironmentVariable] = Field(
         default_factory=list, description="Environment variables for this package"
     )
+    sha256: dict[str, str] | None = Field(
+        default=None,
+        description="SHA256 hashes per architecture for MCPB bundles (e.g., {'linux-amd64': 'abc...', 'linux-arm64': 'def...'})",
+    )
 
 
 class HealthCheck(BaseModel):
@@ -264,6 +268,11 @@ class RepositoryExtension(BaseModel):
 class NimbleToolsRuntime(BaseModel):
     """NimbleTools-specific runtime configuration"""
 
+    # MCPB runtime specification (e.g., "python:3.14", "node:24", "supergateway-python:3.14", "binary")
+    runtime: str | None = Field(
+        default=None,
+        description="Base image runtime for MCPB bundles (e.g., 'python:3.14', 'node:24', 'supergateway-python:3.14', 'binary')",
+    )
     container: ContainerConfig | None = Field(default=None)
     resources: Resources = Field(default_factory=Resources)
     scaling: Scaling = Field(default_factory=Scaling)

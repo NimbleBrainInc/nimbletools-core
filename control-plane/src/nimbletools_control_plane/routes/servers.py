@@ -41,19 +41,107 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/workspaces", tags=["servers"])
 
 
+def _get_cluster_architecture() -> str:
+    """Get the primary architecture of the cluster nodes.
+
+    Returns 'amd64' or 'arm64' based on node labels.
+    Defaults to 'amd64' if unable to determine.
+    """
+    try:
+        k8s_core = client.CoreV1Api()
+        nodes = k8s_core.list_node()
+
+        if not nodes.items:
+            logger.warning("No nodes found in cluster, defaulting to amd64")
+            return "amd64"
+
+        # Get architecture from first node (assumes homogeneous cluster)
+        first_node = nodes.items[0]
+        labels = first_node.metadata.labels or {}
+        arch: str = labels.get("kubernetes.io/arch", "amd64")
+        logger.debug("Detected cluster architecture: %s", arch)
+        return arch
+    except Exception as e:
+        logger.warning("Failed to detect cluster architecture: %s, defaulting to amd64", e)
+        return "amd64"
+
+
 def _extract_container_config(mcp_server: MCPServer) -> dict[str, Any]:
-    """Extract container configuration from MCP server definition"""
-    container_config = {
+    """Extract container configuration from MCP server definition.
+
+    Handles different registry types:
+    - mcpb: Uses base images (mcpb-python, mcpb-node) with BUNDLE_URL
+    - oci: Uses container image directly
+    """
+    container_config: dict[str, Any] = {
         "image": "unknown",
         "registry": "docker.io",
         "port": 8000,
     }
 
+    runtime = mcp_server.nimbletools_runtime
+
     # Extract image from packages if available
     if mcp_server.packages:
         for package in mcp_server.packages:
-            if package.registryType == "oci":
-                # Construct full image reference with version tag
+            if package.registryType == "mcpb":
+                # MCPB: Use base image + BUNDLE_URL
+                runtime_spec = runtime.runtime if runtime else None
+                if not runtime_spec:
+                    logger.warning(
+                        "MCPB package %s missing runtime in _meta, defaulting to python:3.14",
+                        package.identifier,
+                    )
+                    runtime_spec = "python:3.14"
+
+                # Map runtime to base image (e.g., "python:3.14" -> "mcpb-python:3.14")
+                runtime_parts = runtime_spec.split(":")
+                runtime_name = runtime_parts[0]  # "python" or "node"
+                runtime_version = runtime_parts[1] if len(runtime_parts) > 1 else "latest"
+
+                container_config["image"] = f"mcpb-{runtime_name}:{runtime_version}"
+                container_config["registry"] = "docker.io/nimbletools"
+
+                # Construct bundle URL with architecture suffix
+                # Format: {registryBaseUrl}/v{version}/{identifier}-v{version}-linux-{arch}.mcpb
+                if package.registryBaseUrl:
+                    arch = _get_cluster_architecture()
+                    bundle_url = (
+                        f"{package.registryBaseUrl}/v{package.version}/"
+                        f"{package.identifier}-v{package.version}-linux-{arch}.mcpb"
+                    )
+                    container_config["bundleUrl"] = bundle_url
+                    logger.info(
+                        "Constructed MCPB bundle URL for %s arch: %s",
+                        arch,
+                        bundle_url,
+                    )
+
+                    # Extract SHA256 hash for this architecture if available
+                    if package.sha256:
+                        arch_key = f"linux-{arch}"
+                        if arch_key in package.sha256:
+                            container_config["bundleSha256"] = package.sha256[arch_key]
+                            logger.info(
+                                "Bundle SHA256 for %s: %s...",
+                                arch_key,
+                                package.sha256[arch_key][:16],
+                            )
+                        else:
+                            logger.warning(
+                                "No SHA256 hash found for architecture %s in package %s",
+                                arch_key,
+                                package.identifier,
+                            )
+                else:
+                    logger.warning(
+                        "MCPB package %s missing registryBaseUrl, bundle URL cannot be constructed",
+                        package.identifier,
+                    )
+                break
+
+            elif package.registryType == "oci":
+                # OCI: Use container image directly
                 image_identifier = package.identifier
                 image_version = package.version
                 container_config["image"] = f"{image_identifier}:{image_version}"
@@ -63,7 +151,6 @@ def _extract_container_config(mcp_server: MCPServer) -> dict[str, Any]:
                 break
 
     # Override port with runtime config if available
-    runtime = mcp_server.nimbletools_runtime
     if (
         runtime
         and runtime.container
@@ -222,6 +309,20 @@ def _create_mcpservice_spec_from_mcp_server(
     if mcp_server.icons:
         icons_data = [icon.model_dump(exclude_none=True, mode="json") for icon in mcp_server.icons]
 
+    # Build environment variables
+    # Start with user-provided environment, then add system env vars
+    env_vars: dict[str, str] = dict(environment) if environment else {}
+
+    # For MCPB packages, add BUNDLE_URL and optional BUNDLE_SHA256 to environment
+    if "bundleUrl" in container_config:
+        env_vars["BUNDLE_URL"] = container_config["bundleUrl"]
+        del container_config["bundleUrl"]
+
+        # Add SHA256 hash for integrity verification if available
+        if "bundleSha256" in container_config:
+            env_vars["BUNDLE_SHA256"] = container_config["bundleSha256"]
+            del container_config["bundleSha256"]
+
     return {
         "apiVersion": "mcp.nimbletools.dev/v1",
         "kind": "MCPService",
@@ -242,6 +343,7 @@ def _create_mcpservice_spec_from_mcp_server(
             "resources": resources,
             "routing": default_routing,
             "scaling": default_scaling,
+            "environment": env_vars,
             "title": mcp_server.title,
             "icons": icons_data,
         },

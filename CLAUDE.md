@@ -70,9 +70,50 @@ make release      # verify, git tag, push stable images + chart
 
 All docs in `/docs`, not component directories. No temporal language.
 
+## MCPB Base Images
+
+Four runtime types for different MCP server architectures:
+
+| Runtime | Versions | Use Case |
+|---------|----------|----------|
+| `python:X.Y` | 3.12, 3.13, **3.14** | Python HTTP servers (FastMCP, uvicorn) |
+| `node:X` | 20, 22, **24** | Node.js HTTP servers |
+| `supergateway-python:X.Y` | 3.12, 3.13, **3.14** | stdio servers wrapped as HTTP |
+| `binary` | latest | Pre-compiled binaries (Go, Rust) |
+
+Base image format: `nimbletools/mcpb-{runtime}:{version}`
+
+Examples:
+- `nimbletools/mcpb-python:3.14` - Python HTTP server
+- `nimbletools/mcpb-node:24` - Node.js HTTP server
+- `nimbletools/mcpb-supergateway-python:3.14` - stdio→HTTP wrapper
+- `nimbletools/mcpb-binary:latest` - Compiled binaries
+
+### Building Base Images Locally
+
+```bash
+make base-images           # Build Python + Node (default)
+make base-images-all       # Build ALL images (python, node, supergateway, binary)
+make base-images-python    # Build Python 3.12, 3.13, 3.14
+make base-images-node      # Build Node 20, 22, 24
+make base-images-supergateway  # Build Supergateway images
+make base-images-binary    # Build binary image
+make base-images-import    # Import to local k3d cluster
+```
+
+Or build specific versions:
+```bash
+cd base-images
+make python-3.13              # Build only Python 3.13
+make node-22                  # Build only Node 22
+make supergateway-python-3.14 # Build Supergateway with Python 3.14
+make binary                   # Build binary image
+```
+
 ## Standards References
 
 Read these when working on relevant tasks:
 - Platform architecture: `/docs/PLATFORM_PRINCIPLES.md`
 - Python/testing/API standards: `/docs/CODING_STANDARDS.md`
 - Version/release workflow: `/docs/RELEASE_PROCESS.md`
+- MCPB base images: `/docs/MCPB_BASE_IMAGES.md`

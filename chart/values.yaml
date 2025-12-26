@@ -186,6 +186,9 @@ rbac:
       - apiGroups: [""]
         resources: ["pods", "pods/log"] # For reading server logs in workspace namespaces only (via RoleBinding)
         verbs: ["get", "list"]
+      - apiGroups: [""]
+        resources: ["nodes"] # For detecting cluster architecture (amd64/arm64)
+        verbs: ["get", "list"]
       - apiGroups: ["networking.k8s.io"] # Added for ingress management
         resources: ["ingresses"]
         verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]

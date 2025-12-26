@@ -650,9 +650,9 @@ class TestCoreMCPOperator:
 
         container = result.spec.template.spec.containers[0]
 
-        # HTTP deployment has shorter initial delay (10s liveness, 2s readiness)
-        assert container.liveness_probe.initial_delay_seconds == 10
-        assert container.readiness_probe.initial_delay_seconds == 2
+        # HTTP deployment allows time for MCPB bundle download/extract
+        assert container.liveness_probe.initial_delay_seconds == 30
+        assert container.readiness_probe.initial_delay_seconds == 15
 
     def test_ingress_annotations_configuration(self, operator: CoreMCPOperator) -> None:
         """Test ingress has correct nginx annotations."""
