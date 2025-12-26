@@ -60,7 +60,6 @@ install: ## Install all component dependencies
 	@echo "Installing dependencies for all components..."
 	@cd control-plane && uv sync --dev
 	@cd mcp-operator && uv sync --dev
-	@cd universal-adapter && uv sync --dev
 	@cd rbac-controller && uv sync --dev
 	@echo "All dependencies installed"
 
@@ -72,7 +71,6 @@ verify-code: ## Run verification for all Python modules
 	@echo "Running verification suite for all modules..."
 	@cd control-plane && $(MAKE) verify
 	@cd mcp-operator && $(MAKE) verify
-	@cd universal-adapter && $(MAKE) verify
 	@cd rbac-controller && $(MAKE) verify
 
 verify-chart: ## Run Helm chart unit tests
@@ -83,7 +81,6 @@ clean: ## Clean all generated files
 	@echo "Cleaning all components..."
 	@cd control-plane && $(MAKE) clean
 	@cd mcp-operator && $(MAKE) clean
-	@cd universal-adapter && $(MAKE) clean
 	@cd rbac-controller && $(MAKE) clean
 	@rm -rf dist/
 	@echo "Cleanup completed"

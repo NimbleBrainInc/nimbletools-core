@@ -55,10 +55,13 @@ GitHub token needs `packages:write` scope: https://github.com/settings/tokens
 
 All images built for `linux/amd64,linux/arm64`:
 
-- `docker.io/nimbletools/universal-adapter:VERSION`
 - `docker.io/nimbletools/mcp-operator:VERSION`
 - `docker.io/nimbletools/control-plane:VERSION`
 - `docker.io/nimbletools/rbac-controller:VERSION`
+- `docker.io/nimbletools/mcpb-python:VERSION` (base images)
+- `docker.io/nimbletools/mcpb-node:VERSION` (base images)
+- `docker.io/nimbletools/mcpb-supergateway-python:VERSION` (base images)
+- `docker.io/nimbletools/mcpb-binary:VERSION` (base images)
 
 Each also tagged `:latest`.
 

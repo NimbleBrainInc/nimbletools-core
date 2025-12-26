@@ -32,9 +32,13 @@ class Icon(BaseModel):
 
 
 class TransportProtocol(BaseModel):
-    """Transport protocol configuration for MCP servers"""
+    """Transport protocol configuration for MCP servers.
 
-    type: Literal["stdio", "streamable-http"] = Field(..., description="Transport protocol type")
+    With MCPB, all servers expose HTTP endpoints. For stdio-based servers,
+    use the supergateway runtime which wraps stdio as streamable-http.
+    """
+
+    type: Literal["streamable-http"] = Field(..., description="Transport protocol type")
 
 
 class EnvironmentVariable(BaseModel):
@@ -59,11 +63,14 @@ class Package(BaseModel):
     registryType: str = Field(
         ..., description="Registry type (e.g., 'npm', 'pypi', 'oci', 'nuget', 'mcpb')"
     )
-    identifier: str = Field(..., description="Package identifier in the registry")
+    identifier: str = Field(
+        ...,
+        description="Package identifier. For mcpb: direct URL to bundle. For other types: package name in registry",
+    )
     version: str = Field(..., description="Package version")
     transport: TransportProtocol = Field(..., description="Transport protocol configuration")
     registryBaseUrl: str | None = Field(
-        default=None, description="Optional custom registry base URL"
+        default=None, description="Optional custom registry base URL (not used for mcpb)"
     )
     runtimeHint: str | None = Field(
         default=None, description="Runtime command hint (e.g., 'npx', 'uvx', 'docker')"
@@ -74,9 +81,9 @@ class Package(BaseModel):
     environmentVariables: list[EnvironmentVariable] = Field(
         default_factory=list, description="Environment variables for this package"
     )
-    sha256: dict[str, str] | None = Field(
+    fileSha256: str | None = Field(
         default=None,
-        description="SHA256 hashes per architecture for MCPB bundles (e.g., {'linux-amd64': 'abc...', 'linux-arm64': 'def...'})",
+        description="SHA256 hash of the package file for integrity verification",
     )
 
 

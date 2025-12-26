@@ -40,7 +40,6 @@ class TestCoreMCPOperator:
         """Test operator initializes correctly."""
         assert isinstance(operator, CoreMCPOperator)
         assert hasattr(operator, "operator_namespace")
-        assert hasattr(operator, "universal_adapter_image")
         assert hasattr(operator, "control_plane_service")
         # Verify the control plane service is discovered on init
         assert operator.control_plane_service == (
@@ -56,11 +55,11 @@ class TestCoreMCPOperator:
         assert operator.is_valid_namespace("default") is False
 
     def test_detect_deployment_type(self, operator: CoreMCPOperator) -> None:
-        """Test deployment type detection based on transport type."""
-        # Test stdio transport -> stdio deployment
-        stdio_spec = {"packages": [{"transport": {"type": "stdio"}}]}
-        assert operator.detect_deployment_type(stdio_spec) == "stdio"
+        """Test deployment type detection.
 
+        With MCPB, all deployments are HTTP-based. stdio servers use the
+        supergateway runtime which wraps stdio as HTTP.
+        """
         # Test streamable-http transport -> http deployment
         http_spec = {"packages": [{"transport": {"type": "streamable-http"}}]}
         assert operator.detect_deployment_type(http_spec) == "http"
@@ -205,28 +204,15 @@ class TestCoreMCPOperator:
         assert env_vars[1].name == "LOG_LEVEL"
         assert env_vars[1].value == "info"
 
-    def test_create_deployment_stdio_type(self, operator: CoreMCPOperator) -> None:
-        """Test deployment creation calls correct method for stdio type."""
-        spec = {"packages": [{"transport": {"type": "stdio"}}]}
-
-        with patch.object(operator, "_create_universal_adapter_deployment") as mock_method:
-            mock_deployment = MagicMock(spec=V1Deployment)
-            mock_method.return_value = mock_deployment
-
-            result = operator.create_deployment("test", spec, "test-ns", "stdio")
-
-            mock_method.assert_called_once_with("test", spec, "test-ns")
-            assert result == mock_deployment
-
-    def test_create_deployment_http_type(self, operator: CoreMCPOperator) -> None:
-        """Test deployment creation calls correct method for http type."""
+    def test_create_deployment(self, operator: CoreMCPOperator) -> None:
+        """Test deployment creation calls the HTTP deployment method."""
         spec = {"container": {"image": "test-image"}}
 
         with patch.object(operator, "_create_http_deployment") as mock_method:
             mock_deployment = MagicMock(spec=V1Deployment)
             mock_method.return_value = mock_deployment
 
-            result = operator.create_deployment("test", spec, "test-ns", "http")
+            result = operator.create_deployment("test", spec, "test-ns")
 
             mock_method.assert_called_once_with("test", spec, "test-ns")
             assert result == mock_deployment
@@ -237,42 +223,6 @@ class TestCoreMCPOperator:
 
         with pytest.raises(ValueError, match="HTTP service 'test' missing container.image"):
             operator._create_http_deployment("test", spec, "test-ns")
-
-    def test_create_universal_adapter_deployment(self, operator: CoreMCPOperator) -> None:
-        """Test universal adapter deployment creation."""
-        spec = {
-            "packages": [
-                {
-                    "transport": {"type": "stdio"},
-                    "runtimeHint": "python",
-                    "runtimeArguments": [{"type": "positional", "value": "script.py"}],
-                }
-            ],
-            "container": {"port": 9000},
-            "tools": [{"name": "test-tool"}],
-            "mcp_resources": [{"name": "test-resource"}],
-            "prompts": [{"name": "test-prompt"}],
-            "environment": {"TEST_VAR": "test-value"},
-            "replicas": 2,
-        }
-
-        result = operator._create_universal_adapter_deployment("test-service", spec, "test-ns")
-
-        assert isinstance(result, V1Deployment)
-        assert result.metadata.name == "test-service-deployment"
-        assert result.metadata.namespace == "test-ns"
-        assert result.spec.replicas == 2
-
-        container = result.spec.template.spec.containers[0]
-        assert container.name == "universal-adapter"
-        assert container.image == operator.universal_adapter_image
-        assert len(container.env) >= 8  # Base env vars + custom env
-
-        # Check specific environment variables
-        env_names = {env.name for env in container.env}
-        assert "MCP_SERVER_NAME" in env_names
-        assert "MCP_EXECUTABLE" in env_names
-        assert "TEST_VAR" in env_names
 
     def test_create_http_deployment(self, operator: CoreMCPOperator) -> None:
         """Test HTTP deployment creation."""
@@ -418,14 +368,6 @@ class TestCoreMCPOperator:
         spec_no_transport: dict[str, Any] = {"packages": [{}]}
         assert operator.detect_deployment_type(spec_no_transport) == "http"
 
-        # Test with stdio package (should detect stdio)
-        spec_stdio = {
-            "packages": [
-                {"transport": {"type": "stdio"}},
-            ]
-        }
-        assert operator.detect_deployment_type(spec_stdio) == "stdio"
-
         # Test with streamable-http (should return http)
         spec_http = {
             "packages": [
@@ -437,28 +379,6 @@ class TestCoreMCPOperator:
         # Test with nested structure but no packages
         spec_nested = {"other": {"nested": "value"}}
         assert operator.detect_deployment_type(spec_nested) == "http"
-
-    def test_universal_adapter_deployment_defaults(self, operator: CoreMCPOperator) -> None:
-        """Test universal adapter deployment with default values."""
-        spec: dict[str, Any] = {
-            "packages": [{"transport": {"type": "stdio"}, "runtimeHint": "node"}],
-            "container": {},  # Empty container to test default port
-        }
-
-        result = operator._create_universal_adapter_deployment("test", spec, "test-ns")
-
-        container = result.spec.template.spec.containers[0]
-        env_vars = {env.name: env.value for env in container.env}
-
-        # Check values from runtimeHint are used
-        assert env_vars["MCP_EXECUTABLE"] == "node"  # From runtimeHint
-        assert env_vars["MCP_ARGS"] == "[]"  # Default empty list
-        assert env_vars["MCP_WORKING_DIR"] == "/tmp"  # Default working dir
-        assert env_vars["PORT"] == "8000"  # Default port
-
-        # Check default resource requirements
-        assert result.spec.template.spec.containers[0].resources.requests["cpu"] == "50m"
-        assert result.spec.template.spec.containers[0].resources.requests["memory"] == "128Mi"
 
     def test_http_deployment_defaults(self, operator: CoreMCPOperator) -> None:
         """Test HTTP deployment with default values."""
@@ -532,24 +452,6 @@ class TestCoreMCPOperator:
         path = result.spec.rules[0].http.paths[0]
         assert path.backend.service.port.number == 8000  # Default port
 
-    def test_universal_adapter_with_custom_resources(self, operator: CoreMCPOperator) -> None:
-        """Test universal adapter deployment with custom resource requirements."""
-        spec = {
-            "packages": [{"transport": {"type": "stdio"}, "runtimeHint": "node"}],
-            "resources": {
-                "requests": {"cpu": "100m", "memory": "256Mi"},
-                "limits": {"cpu": "500m", "memory": "512Mi"},
-            },
-        }
-
-        result = operator._create_universal_adapter_deployment("test", spec, "test-ns")
-
-        container = result.spec.template.spec.containers[0]
-        assert container.resources.requests["cpu"] == "100m"
-        assert container.resources.requests["memory"] == "256Mi"
-        assert container.resources.limits["cpu"] == "500m"
-        assert container.resources.limits["memory"] == "512Mi"
-
     def test_http_deployment_with_custom_resources(self, operator: CoreMCPOperator) -> None:
         """Test HTTP deployment with custom resource requirements."""
         spec = {
@@ -580,28 +482,6 @@ class TestCoreMCPOperator:
         # Should still check fallback pattern
         assert result is None  # Since "ws-test" doesn't match UUID pattern
 
-    def test_universal_adapter_security_context(self, operator: CoreMCPOperator) -> None:
-        """Test universal adapter deployment has correct security context."""
-        spec: dict[str, Any] = {
-            "packages": [{"transport": {"type": "stdio"}, "runtimeHint": "node"}]
-        }
-
-        result = operator._create_universal_adapter_deployment("test", spec, "test-ns")
-
-        # Check pod security context
-        pod_security = result.spec.template.spec.security_context
-        assert pod_security.run_as_non_root is True
-        assert pod_security.run_as_user == 1000
-        assert pod_security.fs_group == 1000
-
-        # Check container security context
-        container_security = result.spec.template.spec.containers[0].security_context
-        assert container_security.run_as_non_root is True
-        assert container_security.run_as_user == 1000
-        assert container_security.allow_privilege_escalation is False
-        assert container_security.read_only_root_filesystem is True
-        assert container_security.capabilities.drop == ["ALL"]
-
     def test_http_deployment_security_context(self, operator: CoreMCPOperator) -> None:
         """Test HTTP deployment has correct security context."""
         spec = {"container": {"image": "test:latest"}}
@@ -614,33 +494,10 @@ class TestCoreMCPOperator:
         assert pod_security.run_as_user == 1000
         assert pod_security.fs_group == 1000
 
-        # Check container security context matches universal adapter
+        # Check container security context
         container_security = result.spec.template.spec.containers[0].security_context
         assert container_security.run_as_non_root is True
         assert container_security.capabilities.drop == ["ALL"]
-
-    def test_deployment_probes_configuration(self, operator: CoreMCPOperator) -> None:
-        """Test deployment has correct health check probes."""
-        spec: dict[str, Any] = {
-            "packages": [{"transport": {"type": "stdio"}, "runtimeHint": "node"}]
-        }
-
-        result = operator._create_universal_adapter_deployment("test", spec, "test-ns")
-
-        container = result.spec.template.spec.containers[0]
-
-        # Check liveness probe
-        liveness = container.liveness_probe
-        assert liveness.http_get.path == "/health"
-        assert liveness.http_get.port == "http"
-        assert liveness.initial_delay_seconds == 30
-        assert liveness.period_seconds == 10
-
-        # Check readiness probe
-        readiness = container.readiness_probe
-        assert readiness.http_get.path == "/health"
-        assert readiness.initial_delay_seconds == 30
-        assert readiness.period_seconds == 5
 
     def test_http_deployment_different_probe_timings(self, operator: CoreMCPOperator) -> None:
         """Test HTTP deployment probe timings."""

@@ -5,7 +5,7 @@ Understand how NimbleTools Core transforms any MCP tool into a production-ready,
 
 ## Why This Architecture?
 
-**The MCP deployment problem:** Every MCP tool has different requirements - some use stdio, others HTTP, each has unique scaling needs, and deployment patterns are inconsistent across the ecosystem.
+**The MCP deployment problem:** Every MCP tool has different requirements, unique scaling needs, and deployment patterns are inconsistent across the ecosystem.
 
 **Our solution:** A universal deployment layer that works with any MCP server while providing enterprise-grade reliability, auto-scaling, and operational simplicity.
 
@@ -115,21 +115,6 @@ GitHub Release                    Kubernetes Pod
 | `oci` | Direct container image | Pre-built images |
 
 **Architecture-specific bundles:** Control plane detects cluster architecture and constructs the correct bundle URL with `-linux-amd64` or `-linux-arm64` suffix.
-
-### Universal Adapter: Legacy Compatibility Layer
-
-> **Note:** MCPB bundles are the preferred deployment method. Universal Adapter is maintained for backward compatibility with stdio-based tools that haven't migrated to MCPB.
-
-**The problem:** Some legacy MCP tools use stdio transport and can't be easily converted to HTTP.
-
-**Our solution:** A bridge that wraps stdio tools as HTTP services.
-
-**How it works:**
-```
-HTTP API Request → Universal Adapter → stdin → Your MCP Tool
-       ↓                ↓                         ↓
-JSON Response ← HTTP Response ← stdout ← Tool Output
-```
 
 ### Management API: Your Control Center
 
@@ -454,35 +439,6 @@ Does your MCP server use stdio transport?
 - Direct deployment of your container image
 - You control the entire runtime environment
 - Kubernetes Service routes traffic to your port
-
-### Legacy: Universal Adapter
-**For stdio-based tools that can't migrate to MCPB**
-
-```json
-{
-  "name": "ai.nimbletools/legacy-tool",
-  "packages": [{
-    "registryType": "oci",
-    "identifier": "nimbletools/universal-adapter"
-  }],
-  "_meta": {
-    "ai.nimbletools.mcp/v1": {
-      "deployment": {
-        "protocol": "stdio",
-        "command": "/usr/local/bin/legacy-tool",
-        "args": ["--server"]
-      }
-    }
-  }
-}
-```
-
-**What happens:**
-- Universal Adapter wraps your CLI tool
-- stdio communication converted to HTTP API
-- Higher cold-start times due to runtime package installation
-
-> **Note:** Consider migrating to MCPB with `supergateway-python` runtime instead, which provides faster cold-starts via pre-built base images.
 
 ### Runtime Reference
 

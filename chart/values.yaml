@@ -8,22 +8,6 @@ global:
   imageRegistry: docker.io
   imagePullSecrets: []
 
-# Universal Adapter configuration
-universalAdapter:
-  image:
-    repository: nimbletools/universal-adapter
-    tag: "0.4.0-dev"
-    pullPolicy: IfNotPresent
-
-  # Default resource limits for MCP services
-  resources:
-    limits:
-      cpu: "500m"
-      memory: "512Mi"
-    requests:
-      cpu: "100m"
-      memory: "128Mi"
-
 # MCP Operator configuration
 operator:
   image:
