@@ -10,51 +10,47 @@ Understand how NimbleTools Core transforms any MCP tool into a production-ready,
 **Our solution:** A universal deployment layer that works with any MCP server while providing enterprise-grade reliability, auto-scaling, and operational simplicity.
 
 **Design principles:**
-- **Universal compatibility:** stdio or HTTP, any language, any complexity
+- **Portable bundles:** MCPB packages with vendored dependencies run anywhere
 - **Zero-configuration scaling:** From 0 to N replicas automatically
 - **Production-ready defaults:** Security, monitoring, and reliability built-in
-- **Developer-friendly:** Deploy with a single command using server definitions
+- **Fast cold-starts:** Pre-cached base images + lightweight bundles = 20-27s startup
 
 ## System Overview
 
 ```
-                    Your MCP Tools → Production Services
+                         Your MCP Tools → Production Services
 
-┌─────────────────────────────────────────────────────────────────┐
-│                     NimbleTools Core Platform                   │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  Management Layer                      Automation Layer         │
-│  ┌─────────────────┐                 ┌──────────────────┐      │
-│  │   REST API      │                 │   MCP Operator   │      │
-│  │                 │                 │                  │      │
-│  │ • Service CRUD  │◄────────────────┤ • Auto-scaling   │      │
-│  │ • Health Checks │                 │ • Lifecycle Mgmt │      │
-│  │ • Registry Mgmt │                 │ • Self-healing   │      │
-│  └─────────────────┘                 └──────────────────┘      │
-│           ▲                                                     │
-│           │                                                     │
-│  ┌─────────────────┐             Service Discovery              │
-│  │     ntcli       │          ┌──────────────────┐             │
-│  │                 │          │   MCP Registry   │             │
-│  │ • CLI Commands  │◄─────────┤                  │             │
-│  │ • Automation    │          │ • Service Catalog│             │
-│  │ • CI/CD Ready   │          │ • Templates      │             │
-│  └─────────────────┘          │ • Community Hub  │             │
-│                               └──────────────────┘             │
-├─────────────────────────────────────────────────────────────────┤
-│                         Your MCP Services                       │
-│                                                                 │
-│  Analytics        Database          HTTP Service                │
-│  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐           │
-│  │ stdio tool  │   │ Python CLI  │   │ Native HTTP │           │
-│  │ via Adapter │   │ via Adapter │   │ Direct      │           │
-│  └─────────────┘   └─────────────┘   └─────────────┘           │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                      NimbleTools Core Platform                        │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                       │
+│  ┌─────────────────┐   ┌──────────────────┐   ┌──────────────────┐  │
+│  │   MCP Registry  │   │   Control Plane  │   │   MCP Operator   │  │
+│  │                 │──▶│                  │──▶│                  │  │
+│  │ • server.json   │   │ • REST API       │   │ • Watch CRDs     │  │
+│  │ • Package refs  │   │ • Create CRDs    │   │ • Create Pods    │  │
+│  │ • Runtime config│   │ • Auth/RBAC      │   │ • Auto-scaling   │  │
+│  └─────────────────┘   └──────────────────┘   └──────────────────┘  │
+│                                                        │             │
+│                                                        ▼             │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │                        MCPB Runtime                            │  │
+│  │                                                                │  │
+│  │   Base Image                    MCPB Bundle                    │  │
+│  │   ┌──────────────────┐         ┌──────────────────┐           │  │
+│  │   │ mcpb-python:3.14 │    +    │ your-server.mcpb │           │  │
+│  │   │ • Python runtime │         │ • App code       │           │  │
+│  │   │ • mcpb-loader    │         │ • Vendored deps  │           │  │
+│  │   │ • ~50MB, cached  │         │ • manifest.json  │           │  │
+│  │   └──────────────────┘         └──────────────────┘           │  │
+│  │                                                                │  │
+│  │   Startup: Download bundle → Verify SHA256 → Extract → Run    │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│                                                                       │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-**The ecosystem:** Registry for service discovery, CLI for automation, platform for production deployment.
+**Data flow:** Registry defines servers → Control Plane creates CRDs → Operator deploys pods with base images that download bundles at startup.
 
 ## Core Components
 
@@ -88,32 +84,51 @@ ntcli deploy → Control Plane → Operator Watches → Resource Creation → He
  Server Name → MCPService CRD → Deployment + Service → Running Pod → Scaling Decisions
 ```
 
-### Universal Adapter: The Compatibility Layer
+### MCPB Runtime: The Deployment Layer
 
-**The problem:** Most MCP tools are command-line utilities using stdio, but modern infrastructure expects HTTP APIs.
+**The approach:** Lightweight bundles containing app code + vendored dependencies, running on minimal pre-cached base images.
 
-**Our solution:** A transparent bridge that makes any stdio MCP tool look like a native HTTP service.
+**Why MCPB:**
+- **Fast cold-starts:** 20-27s vs 50-75s with runtime package installation
+- **Portable:** All dependencies vendored in bundle, no external fetches
+- **Secure:** SHA256 verification, minimal attack surface
+- **Simple:** One deployment pattern for Python and Node.js servers
 
-**What it enables:**
-- Deploy existing command-line MCP tools without modification
-- Consistent HTTP interface for all services
-- Proper lifecycle management for subprocess-based tools
-- Enterprise-grade error handling and timeouts
+**How it works:**
+```
+GitHub Release                    Kubernetes Pod
+┌─────────────────┐              ┌──────────────────────────────┐
+│ server-v1.0.0-  │   download   │ nimbletools/mcpb-python:3.14 │
+│ linux-arm64.mcpb│────────────▶ │                              │
+└─────────────────┘   extract    │  ┌────────────────────────┐  │
+                      verify     │  │ Your server code       │  │
+                                 │  │ + vendored deps        │  │
+                                 │  └────────────────────────┘  │
+                                 └──────────────────────────────┘
+```
+
+**Package types in server.json:**
+
+| `registryType` | Description | Use case |
+|----------------|-------------|----------|
+| `mcpb` | MCPB bundle on GitHub Releases | Primary, recommended |
+| `oci` | Direct container image | Pre-built images |
+
+**Architecture-specific bundles:** Control plane detects cluster architecture and constructs the correct bundle URL with `-linux-amd64` or `-linux-arm64` suffix.
+
+### Universal Adapter: Legacy Compatibility Layer
+
+> **Note:** MCPB bundles are the preferred deployment method. Universal Adapter is maintained for backward compatibility with stdio-based tools that haven't migrated to MCPB.
+
+**The problem:** Some legacy MCP tools use stdio transport and can't be easily converted to HTTP.
+
+**Our solution:** A bridge that wraps stdio tools as HTTP services.
 
 **How it works:**
 ```
 HTTP API Request → Universal Adapter → stdin → Your MCP Tool
        ↓                ↓                         ↓
 JSON Response ← HTTP Response ← stdout ← Tool Output
-```
-
-**Example transformation:**
-```bash
-# Your existing tool:
-./my-mcp-tool --server
-
-# Becomes this HTTP service:
-curl http://service/mcp -d '{"method": "tools/list"}'
 ```
 
 ### Management API: Your Control Center
@@ -288,43 +303,164 @@ ntcli server status analytics-engine --workspace production
 
 ## Deployment Patterns
 
-### HTTP-Native Services
-**For services built with HTTP APIs from the start**
+### Choosing a Runtime
+
+MCPB supports four runtime types. Use this decision tree:
+
+```
+Does your MCP server use stdio transport?
+├── Yes → Use supergateway-python (wraps stdio as HTTP)
+└── No (HTTP native)
+    ├── Python (FastMCP, uvicorn) → Use python:3.14
+    ├── Node.js (Express, etc.) → Use node:24
+    └── Compiled binary (Go, Rust) → Use binary
+```
+
+### MCPB with Python Runtime (Recommended)
+**For Python MCP servers with native HTTP (FastMCP, uvicorn)**
 
 ```json
 {
-  "name": "ai.nimbletools/web-scraper",
+  "name": "ai.nimbletools/echo",
   "packages": [{
-    "registryType": "oci",
-    "identifier": "your-org/web-scraper-mcp",
-    "transport": {
-      "type": "streamable-http"
+    "registryType": "mcpb",
+    "registryBaseUrl": "https://github.com/NimbleBrainInc/mcp-echo/releases/download",
+    "identifier": "mcp-echo",
+    "version": "1.0.0",
+    "transport": { "type": "streamable-http" },
+    "sha256": {
+      "linux-amd64": "abc123...",
+      "linux-arm64": "def456..."
     }
   }],
-  "_meta": {
-    "ai.nimbletools.mcp/v1": {
-      "deployment": {
-        "protocol": "http",
-        "port": 8000
-      }
-    }
+  "nimbletools_runtime": {
+    "runtime": "python:3.14"
   }
 }
 ```
 
 **What happens:**
-- Direct deployment of your container
-- Kubernetes Service routes traffic to your port
-- Built-in health checks and load balancing
+1. Control plane detects cluster architecture (amd64/arm64)
+2. Constructs bundle URL: `{registryBaseUrl}/v{version}/{identifier}-v{version}-linux-{arch}.mcpb`
+3. Operator deploys pod with base image (`nimbletools/mcpb-python:3.14`)
+4. Container downloads bundle, verifies SHA256, extracts, runs server via uvicorn
+5. Cold-start: ~20-27 seconds
 
-### Command-Line Tools
-**For existing stdio-based MCP tools**
-
-Server definitions specify stdio configuration in the `_meta` section, which the Universal Adapter uses to wrap the CLI tool:
+### MCPB with Node.js Runtime
+**For Node.js MCP servers with native HTTP**
 
 ```json
 {
-  "name": "ai.nimbletools/data-analyzer",
+  "name": "ai.nimbletools/github-tools",
+  "packages": [{
+    "registryType": "mcpb",
+    "registryBaseUrl": "https://github.com/NimbleBrainInc/mcp-github/releases/download",
+    "identifier": "mcp-github",
+    "version": "2.0.0",
+    "transport": { "type": "streamable-http" },
+    "sha256": {
+      "linux-amd64": "abc123...",
+      "linux-arm64": "def456..."
+    }
+  }],
+  "nimbletools_runtime": {
+    "runtime": "node:24"
+  }
+}
+```
+
+**What happens:**
+- Same flow as Python, but uses `nimbletools/mcpb-node:24` base image
+- Entry point from `manifest.json` executed via `node`
+
+### MCPB with Supergateway Runtime
+**For stdio-based MCP servers (wrapped as HTTP)**
+
+```json
+{
+  "name": "ai.nimbletools/stdio-tool",
+  "packages": [{
+    "registryType": "mcpb",
+    "registryBaseUrl": "https://github.com/org/mcp-stdio-tool/releases/download",
+    "identifier": "mcp-stdio-tool",
+    "version": "1.0.0",
+    "transport": { "type": "streamable-http" },
+    "sha256": {
+      "linux-amd64": "abc123...",
+      "linux-arm64": "def456..."
+    }
+  }],
+  "nimbletools_runtime": {
+    "runtime": "supergateway-python:3.14"
+  }
+}
+```
+
+**What happens:**
+1. Uses `nimbletools/mcpb-supergateway-python:3.14` base image
+2. Bundle `manifest.json` contains `server.mcp_config.command` and `args`
+3. Supergateway wraps the stdio command and exposes `/health` and `/mcp` endpoints
+4. Converts stdio MCP protocol to StreamableHTTP transport
+
+**Use this when:** Your MCP server uses stdio transport and you cannot easily add HTTP support.
+
+### MCPB with Binary Runtime
+**For pre-compiled MCP server executables (Go, Rust, etc.)**
+
+```json
+{
+  "name": "ai.nimbletools/go-server",
+  "packages": [{
+    "registryType": "mcpb",
+    "registryBaseUrl": "https://github.com/org/mcp-go-server/releases/download",
+    "identifier": "mcp-go-server",
+    "version": "1.0.0",
+    "transport": { "type": "streamable-http" },
+    "sha256": {
+      "linux-amd64": "abc123...",
+      "linux-arm64": "def456..."
+    }
+  }],
+  "nimbletools_runtime": {
+    "runtime": "binary"
+  }
+}
+```
+
+**What happens:**
+1. Uses `nimbletools/mcpb-binary:latest` base image (minimal Debian)
+2. Bundle contains compiled binary in `bin/` directory
+3. Manifest `server.mcp_config.command` specifies the binary path
+4. `${__dirname}` placeholder replaced with bundle directory at runtime
+
+**Use this when:** Your MCP server is a compiled binary (Go, Rust, C++).
+
+### OCI Images
+**For pre-built container images**
+
+```json
+{
+  "name": "ai.nimbletools/custom-service",
+  "packages": [{
+    "registryType": "oci",
+    "identifier": "your-org/mcp-service",
+    "version": "1.0.0",
+    "transport": { "type": "streamable-http" }
+  }]
+}
+```
+
+**What happens:**
+- Direct deployment of your container image
+- You control the entire runtime environment
+- Kubernetes Service routes traffic to your port
+
+### Legacy: Universal Adapter
+**For stdio-based tools that can't migrate to MCPB**
+
+```json
+{
+  "name": "ai.nimbletools/legacy-tool",
   "packages": [{
     "registryType": "oci",
     "identifier": "nimbletools/universal-adapter"
@@ -333,8 +469,8 @@ Server definitions specify stdio configuration in the `_meta` section, which the
     "ai.nimbletools.mcp/v1": {
       "deployment": {
         "protocol": "stdio",
-        "command": "/usr/local/bin/data-analyzer",
-        "args": ["--server", "--config=/etc/config.json"]
+        "command": "/usr/local/bin/legacy-tool",
+        "args": ["--server"]
       }
     }
   }
@@ -344,8 +480,20 @@ Server definitions specify stdio configuration in the `_meta` section, which the
 **What happens:**
 - Universal Adapter wraps your CLI tool
 - stdio communication converted to HTTP API
-- Your tool runs as a managed subprocess
-- Full lifecycle management and health monitoring
+- Higher cold-start times due to runtime package installation
+
+> **Note:** Consider migrating to MCPB with `supergateway-python` runtime instead, which provides faster cold-starts via pre-built base images.
+
+### Runtime Reference
+
+| Runtime | Base Image | Use Case |
+|---------|------------|----------|
+| `python:3.14` | mcpb-python:3.14 | Python HTTP servers (FastMCP, uvicorn) |
+| `python:3.13` | mcpb-python:3.13 | Python HTTP servers (older Python) |
+| `node:24` | mcpb-node:24 | Node.js HTTP servers |
+| `node:22` | mcpb-node:22 | Node.js HTTP servers (LTS) |
+| `supergateway-python:3.14` | mcpb-supergateway-python:3.14 | Python stdio servers |
+| `binary` | mcpb-binary:latest | Pre-compiled binaries (Go, Rust) |
 
 ## Organization Patterns
 
@@ -388,7 +536,7 @@ Scaling behavior is configured in the server definition's `_meta` section:
 **How it works:**
 1. **Idle state:** Zero pods running, zero cost
 2. **Request arrives:** Operator detects demand, spins up pod
-3. **Cold start:** ~10-30 seconds to first response (cached images)
+3. **Cold start:** ~20-27 seconds to first response (MCPB with cached base images)
 4. **Auto scale-down:** Returns to zero after idle period
 
 ### Performance Optimization
@@ -518,11 +666,14 @@ The control plane supports validation webhooks for custom deployment policies (c
 ```
 1. You: ntcli srv deploy ai.nimbletools/echo
 2. ntcli: Fetches server.json from registry
-3. Control Plane: Creates MCPService CRD from server definition
-4. Operator: Detects new MCPService, creates Deployment + Service
-5. Kubernetes: Schedules pod, pulls image, starts container
-6. Service: Health checks pass, ready to receive traffic
-7. You: Service visible in `ntcli srv list`
+3. Control Plane: Creates MCPServer CRD, detects cluster architecture
+4. Operator: Detects new MCPServer, creates Deployment with:
+   - Base image: nimbletools/mcpb-python:3.14
+   - BUNDLE_URL: https://github.com/.../mcp-echo-v1.0.0-linux-arm64.mcpb
+   - BUNDLE_SHA256: (architecture-specific hash)
+5. Kubernetes: Schedules pod, base image already cached
+6. Container: Downloads bundle, verifies SHA256, extracts, starts server
+7. Service: Health checks pass at /health, ready for traffic (~20-27s)
 ```
 
 ### Request Processing Flow
@@ -545,8 +696,8 @@ No requests for 5 minutes → Operator scales to 0 → Pod terminates
     Zero cost                Pod resources freed    Ready for next request
 
 New request arrives → Operator scales to 1 → Pod starts → Service ready
-       ↓                     ↓                ↓            ↓ 
-  ~30s cold start        Image cached      Health check   Handle request
+       ↓                     ↓                ↓            ↓
+  ~20-27s cold start    Base image cached   Bundle downloaded   Handle request
 ```
 
 ## Configuration Management

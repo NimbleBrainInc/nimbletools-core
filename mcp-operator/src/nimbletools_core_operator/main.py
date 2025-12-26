@@ -486,7 +486,7 @@ class CoreMCPOperator:
                                 liveness_probe=(
                                     V1Probe(
                                         http_get=V1HTTPGetAction(path=health_path, port="http"),
-                                        initial_delay_seconds=10,
+                                        initial_delay_seconds=30,
                                         period_seconds=10,
                                         failure_threshold=3,
                                     )
@@ -496,8 +496,8 @@ class CoreMCPOperator:
                                 readiness_probe=(
                                     V1Probe(
                                         http_get=V1HTTPGetAction(path=health_path, port="http"),
-                                        initial_delay_seconds=2,
-                                        period_seconds=3,
+                                        initial_delay_seconds=15,
+                                        period_seconds=5,
                                         failure_threshold=3,
                                     )
                                     if health_checks_enabled

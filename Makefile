@@ -1,5 +1,5 @@
 # NimbleTools Core - Root Makefile
-.PHONY: help install verify clean dev dev-verify dev-build dev-deploy dev-smoke dev-quick dev-status dev-bump publish release
+.PHONY: help install verify clean dev dev-verify dev-build dev-deploy dev-smoke dev-quick dev-status dev-bump publish release base-images
 
 # Version from VERSION file
 VERSION := $(shell cat VERSION 2>/dev/null || echo "0.1.0")
@@ -17,6 +17,9 @@ help: ## Show this help message
 	@echo ""
 	@echo "Testing & Quality:"
 	@grep -E '^(verify|install|clean)[a-zA-Z_-]*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
+	@echo ""
+	@echo "Base Images (MCPB):"
+	@grep -E '^base-images[a-zA-Z_-]*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Publishing & Release:"
 	@grep -E '^(publish|release|tag|version)[a-zA-Z_-]*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -156,3 +159,31 @@ release: verify tag publish github-release ## Complete release workflow (verify,
 	@echo "  GitHub release: https://github.com/NimbleBrainInc/nimbletools-core/releases/tag/v$(VERSION)"
 	@echo "  Docker images: $(DOCKER_REGISTRY)/nimbletools/*:$(VERSION)"
 	@echo "  Helm chart: oci://$(REGISTRY)/charts/$(CHART_NAME):$(VERSION)"
+
+# =============================================================================
+# Base Images (MCPB runtime)
+# =============================================================================
+
+base-images: ## Build default MCPB base images (Python + Node)
+	@cd base-images && $(MAKE) all
+
+base-images-python: ## Build Python base images (3.12, 3.13, 3.14)
+	@cd base-images && $(MAKE) python
+
+base-images-node: ## Build Node.js base images (20, 22, 24)
+	@cd base-images && $(MAKE) node
+
+base-images-supergateway: ## Build Supergateway images (stdio→HTTP wrapper)
+	@cd base-images && $(MAKE) supergateway
+
+base-images-binary: ## Build binary image (for Go, Rust executables)
+	@cd base-images && $(MAKE) binary
+
+base-images-all: ## Build ALL base images (python, node, supergateway, binary)
+	@cd base-images && $(MAKE) all supergateway binary
+
+base-images-import: ## Import base images to local k3d cluster
+	@cd base-images && $(MAKE) import-k3d
+
+base-images-clean: ## Remove local base images
+	@cd base-images && $(MAKE) clean
