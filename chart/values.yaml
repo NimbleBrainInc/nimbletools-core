@@ -12,7 +12,7 @@ global:
 universalAdapter:
   image:
     repository: nimbletools/universal-adapter
-    tag: "0.3.0"
+    tag: "0.4.0-dev"
     pullPolicy: IfNotPresent
 
   # Default resource limits for MCP services
@@ -28,7 +28,7 @@ universalAdapter:
 operator:
   image:
     repository: nimbletools/mcp-operator
-    tag: "0.3.0"
+    tag: "0.4.0-dev"
     pullPolicy: IfNotPresent
 
   replicas: 1
@@ -54,7 +54,7 @@ controlPlane:
 
   image:
     repository: nimbletools/control-plane
-    tag: "0.3.0"
+    tag: "0.4.0-dev"
     pullPolicy: IfNotPresent
 
   replicas: 2
@@ -93,7 +93,7 @@ rbacController:
 
   image:
     repository: nimbletools/rbac-controller
-    tag: "0.3.0"
+    tag: "0.4.0-dev"
     pullPolicy: IfNotPresent
 
   replicas: 1
