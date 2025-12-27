@@ -11,10 +11,13 @@ from pydantic import BaseModel, Field
 
 
 class DeploymentType(str, Enum):
-    """MCP service deployment types"""
+    """MCP service deployment types.
+
+    With MCPB, all deployments are HTTP-based. stdio servers use the
+    supergateway runtime which wraps stdio as HTTP.
+    """
 
     HTTP = "http"
-    STDIO = "stdio"
 
 
 class MCPTool(BaseModel):
@@ -40,14 +43,12 @@ class ContainerSpec(BaseModel):
 
 
 class DeploymentSpec(BaseModel):
-    """Deployment specification"""
+    """Deployment specification.
 
-    type: DeploymentType = Field(..., description="Deployment type")
-    executable: str | None = Field(default=None, description="Executable path for stdio deployment")
-    args: list[str] | None = Field(default=None, description="Arguments for stdio executable")
-    workingDir: str | None = Field(
-        default=None, description="Working directory for stdio executable"
-    )
+    With MCPB, all deployments are HTTP-based.
+    """
+
+    type: DeploymentType = Field(default=DeploymentType.HTTP, description="Deployment type")
 
 
 class MCPServiceSpec(BaseModel):

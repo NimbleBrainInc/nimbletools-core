@@ -301,7 +301,6 @@ build_helm_command() {
         cmd="$cmd --set operator.image.pullPolicy=Never"
         cmd="$cmd --set controlPlane.image.pullPolicy=Never"
         cmd="$cmd --set rbacController.image.pullPolicy=Never"
-        cmd="$cmd --set universalAdapter.image.pullPolicy=Never"
         cmd="$cmd --set workspaceAuth.image.pullPolicy=Never"
     fi
     

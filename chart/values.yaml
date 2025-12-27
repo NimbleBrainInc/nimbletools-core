@@ -8,27 +8,11 @@ global:
   imageRegistry: docker.io
   imagePullSecrets: []
 
-# Universal Adapter configuration
-universalAdapter:
-  image:
-    repository: nimbletools/universal-adapter
-    tag: "0.3.0"
-    pullPolicy: IfNotPresent
-
-  # Default resource limits for MCP services
-  resources:
-    limits:
-      cpu: "500m"
-      memory: "512Mi"
-    requests:
-      cpu: "100m"
-      memory: "128Mi"
-
 # MCP Operator configuration
 operator:
   image:
     repository: nimbletools/mcp-operator
-    tag: "0.3.0"
+    tag: "0.4.0"
     pullPolicy: IfNotPresent
 
   replicas: 1
@@ -54,7 +38,7 @@ controlPlane:
 
   image:
     repository: nimbletools/control-plane
-    tag: "0.3.0"
+    tag: "0.4.0"
     pullPolicy: IfNotPresent
 
   replicas: 2
@@ -93,7 +77,7 @@ rbacController:
 
   image:
     repository: nimbletools/rbac-controller
-    tag: "0.3.0"
+    tag: "0.4.0"
     pullPolicy: IfNotPresent
 
   replicas: 1
@@ -185,6 +169,9 @@ rbac:
         verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
       - apiGroups: [""]
         resources: ["pods", "pods/log"] # For reading server logs in workspace namespaces only (via RoleBinding)
+        verbs: ["get", "list"]
+      - apiGroups: [""]
+        resources: ["nodes"] # For detecting cluster architecture (amd64/arm64)
         verbs: ["get", "list"]
       - apiGroups: ["networking.k8s.io"] # Added for ingress management
         resources: ["ingresses"]

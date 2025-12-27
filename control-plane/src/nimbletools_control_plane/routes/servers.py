@@ -2,6 +2,7 @@
 Server Router for NimbleTools Control Plane
 """
 
+import json
 import logging
 import re
 from datetime import UTC, datetime
@@ -41,29 +42,198 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/workspaces", tags=["servers"])
 
 
+def _get_cluster_architecture() -> str:
+    """Get the primary architecture of the cluster nodes.
+
+    Returns 'amd64' or 'arm64' based on node labels.
+    Defaults to 'amd64' if unable to determine.
+    """
+    try:
+        k8s_core = client.CoreV1Api()
+        nodes = k8s_core.list_node()
+
+        if not nodes.items:
+            logger.warning("No nodes found in cluster, defaulting to amd64")
+            return "amd64"
+
+        # Get architecture from first node (assumes homogeneous cluster)
+        first_node = nodes.items[0]
+        labels = first_node.metadata.labels or {}
+        arch: str = labels.get("kubernetes.io/arch", "amd64")
+        logger.debug("Detected cluster architecture: %s", arch)
+        return arch
+    except Exception as e:
+        logger.warning("Failed to detect cluster architecture: %s, defaulting to amd64", e)
+        return "amd64"
+
+
+class MCPBValidationError(Exception):
+    """Validation error for MCPB packages."""
+
+    def __init__(self, message: str, error_code: str):
+        self.message = message
+        self.error_code = error_code
+        super().__init__(message)
+
+
+def _extract_mcpb_filename(url: str) -> str | None:
+    """Extract the .mcpb filename from a URL.
+
+    Returns the filename if valid, None otherwise.
+    """
+    if not url:
+        return None
+
+    # Extract the path component and get the filename
+    try:
+        # Handle URLs like https://github.com/.../mcp-echo-v1.0.0-linux-amd64.mcpb
+        path = url.split("?")[0]  # Remove query params
+        filename = path.split("/")[-1]
+
+        if filename.endswith(".mcpb"):
+            return filename
+        return None
+    except Exception:
+        return None
+
+
+def _validate_mcpb_packages(packages: list[Any], cluster_arch: str) -> None:
+    """Validate MCPB packages for deployment.
+
+    Raises MCPBValidationError if validation fails.
+
+    Validates:
+    1. Each MCPB package has a valid .mcpb URL
+    2. At least one package matches the cluster architecture
+    """
+    mcpb_packages = [p for p in packages if p.registryType == "mcpb"]
+
+    if not mcpb_packages:
+        return  # No MCPB packages, nothing to validate
+
+    # Validate each MCPB package has a valid URL
+    for package in mcpb_packages:
+        filename = _extract_mcpb_filename(package.identifier)
+        if not filename:
+            raise MCPBValidationError(
+                message=f"Invalid MCPB package URL: '{package.identifier}'. "
+                "URL must end with a .mcpb filename.",
+                error_code="INVALID_MCPB_URL",
+            )
+
+    # Validate architecture match
+    arch_suffix = f"linux-{cluster_arch}.mcpb"
+    matching_packages = [p for p in mcpb_packages if p.identifier.endswith(arch_suffix)]
+
+    if not matching_packages:
+        available_archs = []
+        for p in mcpb_packages:
+            filename = _extract_mcpb_filename(p.identifier)
+            # Extract arch from filename like "mcp-echo-v1.0.0-linux-amd64.mcpb"
+            if filename and "-linux-" in filename:
+                arch_part = filename.split("-linux-")[-1].replace(".mcpb", "")
+                available_archs.append(arch_part)
+
+        raise MCPBValidationError(
+            message=f"No MCPB package available for cluster architecture '{cluster_arch}'. "
+            f"Available architectures: {available_archs or ['none']}.",
+            error_code="ARCHITECTURE_MISMATCH",
+        )
+
+
+def _find_mcpb_package_for_arch(packages: list[Any], arch: str) -> Any | None:
+    """Find the MCPB package matching the given architecture.
+
+    MCPB packages have architecture embedded in the identifier URL:
+    e.g., "https://github.com/.../mcp-echo-v0.1.0-linux-amd64.mcpb"
+    """
+    arch_suffix = f"linux-{arch}.mcpb"
+    for package in packages:
+        if package.registryType == "mcpb" and package.identifier.endswith(arch_suffix):
+            return package
+    return None
+
+
 def _extract_container_config(mcp_server: MCPServer) -> dict[str, Any]:
-    """Extract container configuration from MCP server definition"""
-    container_config = {
+    """Extract container configuration from MCP server definition.
+
+    Handles different registry types:
+    - mcpb: Uses base images (mcpb-python, mcpb-node) with BUNDLE_URL
+    - oci: Uses container image directly
+    """
+    container_config: dict[str, Any] = {
         "image": "unknown",
         "registry": "docker.io",
         "port": 8000,
     }
 
+    runtime = mcp_server.nimbletools_runtime
+
     # Extract image from packages if available
     if mcp_server.packages:
-        for package in mcp_server.packages:
-            if package.registryType == "oci":
-                # Construct full image reference with version tag
-                image_identifier = package.identifier
-                image_version = package.version
-                container_config["image"] = f"{image_identifier}:{image_version}"
+        # Check if first package is MCPB to determine handling
+        first_package = mcp_server.packages[0]
 
-                if package.registryBaseUrl:
-                    container_config["registry"] = package.registryBaseUrl
-                break
+        if first_package.registryType == "mcpb":
+            # MCPB: Find package matching cluster architecture
+            arch = _get_cluster_architecture()
+            package = _find_mcpb_package_for_arch(mcp_server.packages, arch)
+
+            if not package:
+                logger.warning(
+                    "No MCPB package found for architecture %s, trying first available package",
+                    arch,
+                )
+                package = first_package
+
+            # MCPB: Use base image + BUNDLE_URL
+            runtime_spec = runtime.runtime if runtime else None
+            if not runtime_spec:
+                logger.warning(
+                    "MCPB package missing runtime in _meta, defaulting to python:3.14",
+                )
+                runtime_spec = "python:3.14"
+
+            # Map runtime to base image (e.g., "python:3.14" -> "mcpb-python:3.14")
+            runtime_parts = runtime_spec.split(":")
+            runtime_name = runtime_parts[0]  # "python" or "node"
+            runtime_version = runtime_parts[1] if len(runtime_parts) > 1 else "latest"
+
+            container_config["image"] = f"mcpb-{runtime_name}:{runtime_version}"
+            container_config["registry"] = "docker.io/nimbletools"
+
+            # Use identifier directly as bundle URL (new schema: identifier is the full URL)
+            container_config["bundleUrl"] = package.identifier
+            logger.info(
+                "Using MCPB bundle URL for %s arch: %s",
+                arch,
+                package.identifier,
+            )
+
+            # Use fileSha256 for integrity verification
+            if package.fileSha256:
+                container_config["bundleSha256"] = package.fileSha256
+                logger.info(
+                    "Bundle SHA256: %s...",
+                    package.fileSha256[:16],
+                )
+            else:
+                logger.warning(
+                    "No fileSha256 found for MCPB package %s",
+                    package.identifier,
+                )
+
+        elif first_package.registryType == "oci":
+            # OCI: Use container image directly
+            package = first_package
+            image_identifier = package.identifier
+            image_version = package.version
+            container_config["image"] = f"{image_identifier}:{image_version}"
+
+            if package.registryBaseUrl:
+                container_config["registry"] = package.registryBaseUrl
 
     # Override port with runtime config if available
-    runtime = mcp_server.nimbletools_runtime
     if (
         runtime
         and runtime.container
@@ -222,6 +392,20 @@ def _create_mcpservice_spec_from_mcp_server(
     if mcp_server.icons:
         icons_data = [icon.model_dump(exclude_none=True, mode="json") for icon in mcp_server.icons]
 
+    # Build environment variables
+    # Start with user-provided environment, then add system env vars
+    env_vars: dict[str, str] = dict(environment) if environment else {}
+
+    # For MCPB packages, add BUNDLE_URL and optional BUNDLE_SHA256 to environment
+    if "bundleUrl" in container_config:
+        env_vars["BUNDLE_URL"] = container_config["bundleUrl"]
+        del container_config["bundleUrl"]
+
+        # Add SHA256 hash for integrity verification if available
+        if "bundleSha256" in container_config:
+            env_vars["BUNDLE_SHA256"] = container_config["bundleSha256"]
+            del container_config["bundleSha256"]
+
     return {
         "apiVersion": "mcp.nimbletools.dev/v1",
         "kind": "MCPService",
@@ -242,6 +426,7 @@ def _create_mcpservice_spec_from_mcp_server(
             "resources": resources,
             "routing": default_routing,
             "scaling": default_scaling,
+            "environment": env_vars,
             "title": mcp_server.title,
             "icons": icons_data,
         },
@@ -417,6 +602,13 @@ async def deploy_server_to_workspace(
 ) -> ServerDeployResponse:
     """Deploy server to workspace - accepts MCP server definition from registry"""
 
+    # Log full request payload for debugging
+    logger.info(
+        "POST /%s/servers - incoming payload:\n%s",
+        workspace_id,
+        json.dumps(server_request, indent=2, default=str),
+    )
+
     try:
         # The CLI sends the server definition in a "server" field
         mcp_server_data = server_request.get("server", server_request)
@@ -449,6 +641,27 @@ async def deploy_server_to_workspace(
                 status_code=400,
                 detail=f"Cannot deploy server with status '{mcp_server.status}'. Only 'active' servers can be deployed.",
             )
+
+        # Validate MCPB packages if present
+        if mcp_server.packages:
+            cluster_arch = _get_cluster_architecture()
+            try:
+                _validate_mcpb_packages(mcp_server.packages, cluster_arch)
+            except MCPBValidationError as e:
+                logger.warning(
+                    "MCPB validation failed for server %s: %s (code: %s)",
+                    mcp_server.name,
+                    e.message,
+                    e.error_code,
+                )
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "message": e.message,
+                        "error_code": e.error_code,
+                        "cluster_architecture": cluster_arch,
+                    },
+                )
 
         # Extract optional parameters from request
         replicas = server_request.get("replicas", 1)
@@ -555,6 +768,9 @@ def _parse_log_line(log_line: str) -> tuple[datetime | None, LogLevel, str]:
         timestamp_str, level_str, message = match.groups()
         try:
             timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+            # Ensure timezone-aware for consistent comparison
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=UTC)
             level = _parse_log_level(level_str)
             return timestamp, level, message
         except (ValueError, KeyError):
@@ -568,6 +784,9 @@ def _parse_log_line(log_line: str) -> tuple[datetime | None, LogLevel, str]:
         timestamp_str, level_str, message = match.groups()
         try:
             timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+            # Ensure timezone-aware for consistent comparison
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=UTC)
             level = _parse_log_level(level_str)
             return timestamp, level, message
         except (ValueError, KeyError):

@@ -33,8 +33,6 @@ spec:
           value: {{ .Values.operator.config.enableMetrics | quote }}
         - name: METRICS_PORT
           value: {{ .Values.operator.config.metricsPort | quote }}
-        - name: UNIVERSAL_ADAPTER_IMAGE
-          value: {{ if .Values.global.imageRegistry }}{{ .Values.global.imageRegistry }}/{{ end }}{{ .Values.universalAdapter.image.repository }}:{{ .Values.universalAdapter.image.tag | default .Chart.AppVersion }}
         - name: DOMAIN
           value: {{ .Values.global.domain }}
         # Disable Kopf namespace finalizers to prevent stuck namespaces

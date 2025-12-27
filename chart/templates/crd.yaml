@@ -159,7 +159,7 @@ spec:
                         properties:
                           type:
                             type: string
-                            enum: ["stdio", "streamable-http"]
+                            enum: ["streamable-http"]
                       runtimeHint:
                         type: string
                         description: "Runtime command hint (e.g., 'npx', 'uvx', 'docker')"
@@ -300,6 +300,11 @@ spec:
                       maximum: 65535
                       default: 8000
                       description: "Container port number"
+                environment:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  description: "Environment variables to set in the container"
             status:
               type: object
               properties:

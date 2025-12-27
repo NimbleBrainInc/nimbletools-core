@@ -32,9 +32,13 @@ class Icon(BaseModel):
 
 
 class TransportProtocol(BaseModel):
-    """Transport protocol configuration for MCP servers"""
+    """Transport protocol configuration for MCP servers.
 
-    type: Literal["stdio", "streamable-http"] = Field(..., description="Transport protocol type")
+    With MCPB, all servers expose HTTP endpoints. For stdio-based servers,
+    use the supergateway runtime which wraps stdio as streamable-http.
+    """
+
+    type: Literal["streamable-http"] = Field(..., description="Transport protocol type")
 
 
 class EnvironmentVariable(BaseModel):
@@ -59,11 +63,14 @@ class Package(BaseModel):
     registryType: str = Field(
         ..., description="Registry type (e.g., 'npm', 'pypi', 'oci', 'nuget', 'mcpb')"
     )
-    identifier: str = Field(..., description="Package identifier in the registry")
+    identifier: str = Field(
+        ...,
+        description="Package identifier. For mcpb: direct URL to bundle. For other types: package name in registry",
+    )
     version: str = Field(..., description="Package version")
     transport: TransportProtocol = Field(..., description="Transport protocol configuration")
     registryBaseUrl: str | None = Field(
-        default=None, description="Optional custom registry base URL"
+        default=None, description="Optional custom registry base URL (not used for mcpb)"
     )
     runtimeHint: str | None = Field(
         default=None, description="Runtime command hint (e.g., 'npx', 'uvx', 'docker')"
@@ -73,6 +80,10 @@ class Package(BaseModel):
     )
     environmentVariables: list[EnvironmentVariable] = Field(
         default_factory=list, description="Environment variables for this package"
+    )
+    fileSha256: str | None = Field(
+        default=None,
+        description="SHA256 hash of the package file for integrity verification",
     )
 
 
@@ -264,6 +275,11 @@ class RepositoryExtension(BaseModel):
 class NimbleToolsRuntime(BaseModel):
     """NimbleTools-specific runtime configuration"""
 
+    # MCPB runtime specification (e.g., "python:3.14", "node:24", "supergateway-python:3.14", "binary")
+    runtime: str | None = Field(
+        default=None,
+        description="Base image runtime for MCPB bundles (e.g., 'python:3.14', 'node:24', 'supergateway-python:3.14', 'binary')",
+    )
     container: ContainerConfig | None = Field(default=None)
     resources: Resources = Field(default_factory=Resources)
     scaling: Scaling = Field(default_factory=Scaling)

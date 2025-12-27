@@ -127,7 +127,7 @@ Safely removes NimbleTools Core from Kubernetes clusters with optional cleanup.
 
 ### Development Cycle
 
-1. **Make code changes** in `universal-adapter/`, `mcp-operator/`, or `control-plane/`
+1. **Make code changes** in `mcp-operator/`, `control-plane/`, or `base-images/`
 
 2. **Rebuild and push images:**
 

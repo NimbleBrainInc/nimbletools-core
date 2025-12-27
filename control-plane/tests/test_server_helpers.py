@@ -1,6 +1,10 @@
 """Tests for server router helper functions."""
 
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
+from fastapi import HTTPException
+from kubernetes.client.rest import ApiException
 
 from nimbletools_control_plane.mcp_server_models import (
     EnvironmentVariable,
@@ -11,12 +15,176 @@ from nimbletools_control_plane.mcp_server_models import (
     TransportProtocol,
 )
 from nimbletools_control_plane.routes.servers import (
+    MCPBValidationError,
     _build_labels_and_annotations,
     _build_resources_config,
     _build_scaling_config,
     _extract_container_config,
+    _extract_mcpb_filename,
+    _find_mcpb_package_for_arch,
     _serialize_packages,
+    _validate_mcpb_packages,
+    deploy_server_to_workspace,
 )
+
+
+class TestExtractMcpbFilename:
+    """Test _extract_mcpb_filename helper function."""
+
+    def test_extract_filename_from_github_url(self):
+        """Test extracting filename from GitHub release URL."""
+        url = "https://github.com/NimbleBrainInc/mcp-echo/releases/download/v1.0.0/mcp-echo-v1.0.0-linux-amd64.mcpb"
+        result = _extract_mcpb_filename(url)
+        assert result == "mcp-echo-v1.0.0-linux-amd64.mcpb"
+
+    def test_extract_filename_from_s3_url(self):
+        """Test extracting filename from S3 URL."""
+        url = "https://my-bucket.s3.amazonaws.com/servers/my-server-v2.0.0-linux-arm64.mcpb"
+        result = _extract_mcpb_filename(url)
+        assert result == "my-server-v2.0.0-linux-arm64.mcpb"
+
+    def test_extract_filename_with_query_params(self):
+        """Test extracting filename from URL with query parameters."""
+        url = "https://example.com/server.mcpb?token=abc123"
+        result = _extract_mcpb_filename(url)
+        assert result == "server.mcpb"
+
+    def test_extract_filename_invalid_extension(self):
+        """Test that non-.mcpb URLs return None."""
+        url = "https://example.com/server.tar.gz"
+        result = _extract_mcpb_filename(url)
+        assert result is None
+
+    def test_extract_filename_empty_url(self):
+        """Test that empty URL returns None."""
+        result = _extract_mcpb_filename("")
+        assert result is None
+
+    def test_extract_filename_none_url(self):
+        """Test that None URL returns None."""
+        result = _extract_mcpb_filename(None)  # type: ignore[arg-type]
+        assert result is None
+
+
+class TestValidateMcpbPackages:
+    """Test _validate_mcpb_packages validation function."""
+
+    def test_validate_passes_with_matching_arch(self):
+        """Test validation passes when architecture matches."""
+        amd64_package = Mock(spec=Package)
+        amd64_package.registryType = "mcpb"
+        amd64_package.identifier = "https://example.com/mcp-echo-v1.0.0-linux-amd64.mcpb"
+
+        arm64_package = Mock(spec=Package)
+        arm64_package.registryType = "mcpb"
+        arm64_package.identifier = "https://example.com/mcp-echo-v1.0.0-linux-arm64.mcpb"
+
+        # Should not raise for either architecture
+        _validate_mcpb_packages([amd64_package, arm64_package], "amd64")
+        _validate_mcpb_packages([amd64_package, arm64_package], "arm64")
+
+    def test_validate_fails_with_no_matching_arch(self):
+        """Test validation fails when no architecture matches."""
+        amd64_package = Mock(spec=Package)
+        amd64_package.registryType = "mcpb"
+        amd64_package.identifier = "https://example.com/mcp-echo-v1.0.0-linux-amd64.mcpb"
+
+        with pytest.raises(MCPBValidationError) as exc_info:
+            _validate_mcpb_packages([amd64_package], "arm64")
+
+        assert exc_info.value.error_code == "ARCHITECTURE_MISMATCH"
+        assert "arm64" in exc_info.value.message
+        assert "amd64" in exc_info.value.message  # Should list available archs
+
+    def test_validate_fails_with_invalid_url(self):
+        """Test validation fails when URL doesn't end with .mcpb."""
+        bad_package = Mock(spec=Package)
+        bad_package.registryType = "mcpb"
+        bad_package.identifier = "https://example.com/not-a-bundle"
+
+        with pytest.raises(MCPBValidationError) as exc_info:
+            _validate_mcpb_packages([bad_package], "amd64")
+
+        assert exc_info.value.error_code == "INVALID_MCPB_URL"
+        assert "not-a-bundle" in exc_info.value.message
+
+    def test_validate_skips_non_mcpb_packages(self):
+        """Test validation ignores non-MCPB packages."""
+        oci_package = Mock(spec=Package)
+        oci_package.registryType = "oci"
+        oci_package.identifier = "myimage:latest"
+
+        # Should not raise - no MCPB packages to validate
+        _validate_mcpb_packages([oci_package], "amd64")
+
+    def test_validate_empty_packages(self):
+        """Test validation passes with empty package list."""
+        _validate_mcpb_packages([], "amd64")
+
+    def test_validate_mixed_packages(self):
+        """Test validation only validates MCPB packages in mixed list."""
+        oci_package = Mock(spec=Package)
+        oci_package.registryType = "oci"
+        oci_package.identifier = "myimage:latest"
+
+        mcpb_package = Mock(spec=Package)
+        mcpb_package.registryType = "mcpb"
+        mcpb_package.identifier = "https://example.com/server-v1.0.0-linux-amd64.mcpb"
+
+        # Should pass - MCPB package matches amd64
+        _validate_mcpb_packages([oci_package, mcpb_package], "amd64")
+
+
+class TestFindMcpbPackageForArch:
+    """Test _find_mcpb_package_for_arch helper function."""
+
+    def test_find_package_for_amd64(self):
+        """Test finding amd64 package."""
+        amd64_package = Mock(spec=Package)
+        amd64_package.registryType = "mcpb"
+        amd64_package.identifier = "https://example.com/mcp-echo-v1.0.0-linux-amd64.mcpb"
+
+        arm64_package = Mock(spec=Package)
+        arm64_package.registryType = "mcpb"
+        arm64_package.identifier = "https://example.com/mcp-echo-v1.0.0-linux-arm64.mcpb"
+
+        result = _find_mcpb_package_for_arch([amd64_package, arm64_package], "amd64")
+        assert result == amd64_package
+
+    def test_find_package_for_arm64(self):
+        """Test finding arm64 package."""
+        amd64_package = Mock(spec=Package)
+        amd64_package.registryType = "mcpb"
+        amd64_package.identifier = "https://example.com/mcp-echo-v1.0.0-linux-amd64.mcpb"
+
+        arm64_package = Mock(spec=Package)
+        arm64_package.registryType = "mcpb"
+        arm64_package.identifier = "https://example.com/mcp-echo-v1.0.0-linux-arm64.mcpb"
+
+        result = _find_mcpb_package_for_arch([amd64_package, arm64_package], "arm64")
+        assert result == arm64_package
+
+    def test_find_package_not_found(self):
+        """Test when no matching architecture is found."""
+        amd64_package = Mock(spec=Package)
+        amd64_package.registryType = "mcpb"
+        amd64_package.identifier = "https://example.com/mcp-echo-v1.0.0-linux-amd64.mcpb"
+
+        result = _find_mcpb_package_for_arch([amd64_package], "arm64")
+        assert result is None
+
+    def test_find_package_skips_non_mcpb(self):
+        """Test that non-MCPB packages are skipped."""
+        oci_package = Mock(spec=Package)
+        oci_package.registryType = "oci"
+        oci_package.identifier = "myimage:latest"
+
+        mcpb_package = Mock(spec=Package)
+        mcpb_package.registryType = "mcpb"
+        mcpb_package.identifier = "https://example.com/mcp-echo-v1.0.0-linux-amd64.mcpb"
+
+        result = _find_mcpb_package_for_arch([oci_package, mcpb_package], "amd64")
+        assert result == mcpb_package
 
 
 class TestExtractContainerConfig:
@@ -56,30 +224,137 @@ class TestExtractContainerConfig:
             "port": 8000,
         }
 
-    def test_extract_container_config_skip_non_oci_packages(self):
-        """Test that non-OCI packages are skipped."""
+    def test_extract_container_config_unknown_registry_type(self):
+        """Test that unknown registry types return default config."""
         npm_package = Mock(spec=Package)
         npm_package.registryType = "npm"
         npm_package.identifier = "my-npm-package"
 
-        oci_package = Mock(spec=Package)
-        oci_package.registryType = "oci"
-        oci_package.identifier = "myapp"
-        oci_package.version = "v2.0.0"
-        oci_package.registryBaseUrl = None
-
         mcp_server = Mock(spec=MCPServer)
-        mcp_server.packages = [npm_package, oci_package]
+        mcp_server.packages = [npm_package]
         mcp_server.nimbletools_runtime = None
 
         result = _extract_container_config(mcp_server)
 
-        # Should use the first OCI package, ignore npm
+        # Unknown registry type returns default config
         assert result == {
-            "image": "myapp:v2.0.0",
+            "image": "unknown",
             "registry": "docker.io",
             "port": 8000,
         }
+
+    def test_extract_container_config_with_mcpb_package(self):
+        """Test extraction with MCPB package uses base image and bundle URL."""
+        # New schema: separate package entries per architecture, identifier is full URL
+        amd64_package = Mock(spec=Package)
+        amd64_package.registryType = "mcpb"
+        amd64_package.identifier = "https://github.com/NimbleBrainInc/mcp-echo/releases/download/v1.0.0/mcp-echo-v1.0.0-linux-amd64.mcpb"
+        amd64_package.version = "1.0.0"
+        amd64_package.fileSha256 = "abc123"
+
+        arm64_package = Mock(spec=Package)
+        arm64_package.registryType = "mcpb"
+        arm64_package.identifier = "https://github.com/NimbleBrainInc/mcp-echo/releases/download/v1.0.0/mcp-echo-v1.0.0-linux-arm64.mcpb"
+        arm64_package.version = "1.0.0"
+        arm64_package.fileSha256 = "def456"
+
+        runtime = Mock(spec=NimbleToolsRuntime)
+        runtime.runtime = "python:3.14"
+        runtime.container = None
+
+        mcp_server = Mock(spec=MCPServer)
+        mcp_server.packages = [amd64_package, arm64_package]
+        mcp_server.nimbletools_runtime = runtime
+
+        result = _extract_container_config(mcp_server)
+
+        assert result["image"] == "mcpb-python:3.14"
+        assert result["registry"] == "docker.io/nimbletools"
+        assert result["port"] == 8000
+        assert "bundleUrl" in result
+        # Bundle URL is the identifier directly, architecture is detected from cluster
+        assert "linux-" in result["bundleUrl"]
+        assert result["bundleUrl"].endswith(".mcpb")
+        assert "bundleSha256" in result
+
+    def test_extract_container_config_mcpb_node_runtime(self):
+        """Test MCPB with Node.js runtime."""
+        # New schema: identifier is full URL with architecture
+        amd64_package = Mock(spec=Package)
+        amd64_package.registryType = "mcpb"
+        amd64_package.identifier = "https://github.com/NimbleBrainInc/mcp-github/releases/download/v2.0.0/mcp-github-v2.0.0-linux-amd64.mcpb"
+        amd64_package.version = "2.0.0"
+        amd64_package.fileSha256 = None  # No hash provided
+
+        arm64_package = Mock(spec=Package)
+        arm64_package.registryType = "mcpb"
+        arm64_package.identifier = "https://github.com/NimbleBrainInc/mcp-github/releases/download/v2.0.0/mcp-github-v2.0.0-linux-arm64.mcpb"
+        arm64_package.version = "2.0.0"
+        arm64_package.fileSha256 = None
+
+        runtime = Mock(spec=NimbleToolsRuntime)
+        runtime.runtime = "node:24"
+        runtime.container = None
+
+        mcp_server = Mock(spec=MCPServer)
+        mcp_server.packages = [amd64_package, arm64_package]
+        mcp_server.nimbletools_runtime = runtime
+
+        result = _extract_container_config(mcp_server)
+
+        assert result["image"] == "mcpb-node:24"
+        assert result["registry"] == "docker.io/nimbletools"
+        assert result["port"] == 8000
+        assert "bundleUrl" in result
+        assert "mcp-github-v2.0.0-linux-" in result["bundleUrl"]
+
+    def test_extract_container_config_mcpb_missing_runtime_defaults_to_python(self):
+        """Test MCPB defaults to python:3.14 when runtime is missing."""
+        # New schema: identifier is full URL
+        package = Mock(spec=Package)
+        package.registryType = "mcpb"
+        package.identifier = "https://example.com/releases/v1.0.0/my-server-v1.0.0-linux-amd64.mcpb"
+        package.version = "1.0.0"
+        package.fileSha256 = None  # No hash provided
+
+        mcp_server = Mock(spec=MCPServer)
+        mcp_server.packages = [package]
+        mcp_server.nimbletools_runtime = None
+
+        result = _extract_container_config(mcp_server)
+
+        assert result["image"] == "mcpb-python:3.14"
+        assert result["registry"] == "docker.io/nimbletools"
+
+    def test_extract_container_config_mcpb_takes_precedence_over_oci(self):
+        """Test that MCPB package is processed before OCI if listed first."""
+        # New schema: identifier is full URL
+        mcpb_package = Mock(spec=Package)
+        mcpb_package.registryType = "mcpb"
+        mcpb_package.identifier = (
+            "https://example.com/releases/v1.0.0/mcp-echo-v1.0.0-linux-amd64.mcpb"
+        )
+        mcpb_package.version = "1.0.0"
+        mcpb_package.fileSha256 = None  # No hash provided
+
+        oci_package = Mock(spec=Package)
+        oci_package.registryType = "oci"
+        oci_package.identifier = "old-image"
+        oci_package.version = "1.0.0"
+
+        runtime = Mock(spec=NimbleToolsRuntime)
+        runtime.runtime = "python:3.14"
+        runtime.container = None
+
+        mcp_server = Mock(spec=MCPServer)
+        mcp_server.packages = [mcpb_package, oci_package]
+        mcp_server.nimbletools_runtime = runtime
+
+        result = _extract_container_config(mcp_server)
+
+        # Should use MCPB, not OCI
+        assert result["image"] == "mcpb-python:3.14"
+        assert "bundleUrl" in result
 
     def test_extract_container_config_with_runtime_port(self):
         """Test port override from runtime config."""
@@ -371,7 +646,7 @@ class TestSerializePackages:
 
     def test_serialize_packages_multiple_packages(self):
         """Test serialization of multiple packages."""
-        transport = TransportProtocol(type="stdio")
+        transport = TransportProtocol(type="streamable-http")
 
         package1 = Package(
             registryType="npm",
@@ -392,3 +667,167 @@ class TestSerializePackages:
         assert len(result) == 2
         assert result[0]["identifier"] == "package1"
         assert result[1]["identifier"] == "package2"
+
+
+class TestDeployServerValidation:
+    """Test MCPB validation in the deploy_server_to_workspace endpoint."""
+
+    @pytest.fixture
+    def valid_mcpb_server_data(self):
+        """Valid server data with proper MCPB packages."""
+        return {
+            "server": {
+                "name": "ai.nimbletools/echo",
+                "version": "1.0.0",
+                "description": "Echo server for testing",
+                "packages": [
+                    {
+                        "registryType": "mcpb",
+                        "identifier": "https://github.com/example/releases/v1.0.0/echo-v1.0.0-linux-amd64.mcpb",
+                        "version": "1.0.0",
+                        "fileSha256": "abc123",
+                        "transport": {"type": "streamable-http"},
+                    },
+                    {
+                        "registryType": "mcpb",
+                        "identifier": "https://github.com/example/releases/v1.0.0/echo-v1.0.0-linux-arm64.mcpb",
+                        "version": "1.0.0",
+                        "fileSha256": "def456",
+                        "transport": {"type": "streamable-http"},
+                    },
+                ],
+                "_meta": {
+                    "ai.nimbletools.mcp/v1": {
+                        "status": "active",
+                        "runtime": "python:3.14",
+                    }
+                },
+            }
+        }
+
+    @pytest.fixture
+    def invalid_url_server_data(self):
+        """Server data with invalid MCPB URL (missing .mcpb extension)."""
+        return {
+            "server": {
+                "name": "ai.nimbletools/bad-server",
+                "version": "1.0.0",
+                "description": "Server with bad URL",
+                "packages": [
+                    {
+                        "registryType": "mcpb",
+                        "identifier": "https://example.com/not-a-valid-bundle",
+                        "version": "1.0.0",
+                        "transport": {"type": "streamable-http"},
+                    },
+                ],
+                "_meta": {
+                    "ai.nimbletools.mcp/v1": {
+                        "status": "active",
+                        "runtime": "python:3.14",
+                    }
+                },
+            }
+        }
+
+    @pytest.fixture
+    def wrong_arch_server_data(self):
+        """Server data with MCPB package for wrong architecture."""
+        return {
+            "server": {
+                "name": "ai.nimbletools/wrong-arch",
+                "version": "1.0.0",
+                "description": "Server with wrong architecture",
+                "packages": [
+                    {
+                        "registryType": "mcpb",
+                        "identifier": "https://github.com/example/releases/v1.0.0/server-v1.0.0-linux-arm64.mcpb",
+                        "version": "1.0.0",
+                        "fileSha256": "abc123",
+                        "transport": {"type": "streamable-http"},
+                    },
+                ],
+                "_meta": {
+                    "ai.nimbletools.mcp/v1": {
+                        "status": "active",
+                        "runtime": "python:3.14",
+                    }
+                },
+            }
+        }
+
+    @pytest.mark.asyncio
+    async def test_deploy_rejects_invalid_mcpb_url(self, invalid_url_server_data):
+        """Test that deploy endpoint returns 422 for invalid MCPB URL."""
+        mock_request = Mock()
+
+        with patch(
+            "nimbletools_control_plane.routes.servers._get_cluster_architecture",
+            return_value="amd64",
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await deploy_server_to_workspace(
+                    workspace_id="test-workspace-123",
+                    server_request=invalid_url_server_data,
+                    request=mock_request,
+                    namespace_name="ws-test-workspace",
+                )
+
+            assert exc_info.value.status_code == 422
+            assert exc_info.value.detail["error_code"] == "INVALID_MCPB_URL"
+            assert "not-a-valid-bundle" in exc_info.value.detail["message"]
+
+    @pytest.mark.asyncio
+    async def test_deploy_rejects_wrong_architecture(self, wrong_arch_server_data):
+        """Test that deploy endpoint returns 422 when no matching architecture."""
+        mock_request = Mock()
+
+        # Cluster is amd64, but package only has arm64
+        with patch(
+            "nimbletools_control_plane.routes.servers._get_cluster_architecture",
+            return_value="amd64",
+        ):
+            with pytest.raises(HTTPException) as exc_info:
+                await deploy_server_to_workspace(
+                    workspace_id="test-workspace-123",
+                    server_request=wrong_arch_server_data,
+                    request=mock_request,
+                    namespace_name="ws-test-workspace",
+                )
+
+            assert exc_info.value.status_code == 422
+            assert exc_info.value.detail["error_code"] == "ARCHITECTURE_MISMATCH"
+            assert "amd64" in exc_info.value.detail["message"]
+            assert exc_info.value.detail["cluster_architecture"] == "amd64"
+
+    @pytest.mark.asyncio
+    async def test_deploy_accepts_valid_mcpb_packages(self, valid_mcpb_server_data):
+        """Test that deploy endpoint proceeds with valid MCPB packages."""
+        mock_request = Mock()
+        mock_k8s_custom = MagicMock()
+
+        # Mock the 404 response to trigger create path
+        mock_k8s_custom.get_namespaced_custom_object.side_effect = ApiException(
+            status=404, reason="Not Found"
+        )
+        mock_k8s_custom.create_namespaced_custom_object.return_value = {}
+
+        with patch(
+            "nimbletools_control_plane.routes.servers._get_cluster_architecture",
+            return_value="amd64",
+        ):
+            with patch(
+                "nimbletools_control_plane.routes.servers.client.CustomObjectsApi",
+                return_value=mock_k8s_custom,
+            ):
+                result = await deploy_server_to_workspace(
+                    workspace_id="550e8400-e29b-41d4-a716-446655440000",
+                    server_request=valid_mcpb_server_data,
+                    request=mock_request,
+                    namespace_name="ws-test-workspace",
+                )
+
+                # Should succeed and return a deploy response
+                assert result.server_id == "echo"
+                assert result.status == "pending"
+                assert "deployed successfully" in result.message

@@ -1,5 +1,5 @@
 # NimbleTools Core - Root Makefile
-.PHONY: help install verify clean dev dev-verify dev-build dev-deploy dev-smoke dev-quick dev-status dev-bump publish release
+.PHONY: help install verify clean dev dev-verify dev-build dev-deploy dev-smoke dev-quick dev-status dev-bump publish release base-images version set-version
 
 # Version from VERSION file
 VERSION := $(shell cat VERSION 2>/dev/null || echo "0.1.0")
@@ -13,13 +13,16 @@ help: ## Show this help message
 	@echo "========================================"
 	@echo ""
 	@echo "Development Workflow:"
-	@grep -E '^dev[a-zA-Z_-]*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^dev[a-zA-Z_-]*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Testing & Quality:"
-	@grep -E '^(verify|install|clean)[a-zA-Z_-]*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^(verify|install|clean)[a-zA-Z_-]*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}'
+	@echo ""
+	@echo "Base Images (MCPB):"
+	@grep -E '^base-images[a-zA-Z_-]*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Publishing & Release:"
-	@grep -E '^(publish|release|tag|version)[a-zA-Z_-]*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^(publish|release|tag|version|set-version|github-release)[a-zA-Z_-]*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}'
 
 # =============================================================================
 # Development Workflow (primary interface)
@@ -57,7 +60,6 @@ install: ## Install all component dependencies
 	@echo "Installing dependencies for all components..."
 	@cd control-plane && uv sync --dev
 	@cd mcp-operator && uv sync --dev
-	@cd universal-adapter && uv sync --dev
 	@cd rbac-controller && uv sync --dev
 	@echo "All dependencies installed"
 
@@ -69,7 +71,6 @@ verify-code: ## Run verification for all Python modules
 	@echo "Running verification suite for all modules..."
 	@cd control-plane && $(MAKE) verify
 	@cd mcp-operator && $(MAKE) verify
-	@cd universal-adapter && $(MAKE) verify
 	@cd rbac-controller && $(MAKE) verify
 
 verify-chart: ## Run Helm chart unit tests
@@ -80,7 +81,6 @@ clean: ## Clean all generated files
 	@echo "Cleaning all components..."
 	@cd control-plane && $(MAKE) clean
 	@cd mcp-operator && $(MAKE) clean
-	@cd universal-adapter && $(MAKE) clean
 	@cd rbac-controller && $(MAKE) clean
 	@rm -rf dist/
 	@echo "Cleanup completed"
@@ -156,3 +156,31 @@ release: verify tag publish github-release ## Complete release workflow (verify,
 	@echo "  GitHub release: https://github.com/NimbleBrainInc/nimbletools-core/releases/tag/v$(VERSION)"
 	@echo "  Docker images: $(DOCKER_REGISTRY)/nimbletools/*:$(VERSION)"
 	@echo "  Helm chart: oci://$(REGISTRY)/charts/$(CHART_NAME):$(VERSION)"
+
+# =============================================================================
+# Base Images (MCPB runtime)
+# =============================================================================
+
+base-images: ## Build default MCPB base images (Python + Node)
+	@cd base-images && $(MAKE) all
+
+base-images-python: ## Build Python base images (3.12, 3.13, 3.14)
+	@cd base-images && $(MAKE) python
+
+base-images-node: ## Build Node.js base images (20, 22, 24)
+	@cd base-images && $(MAKE) node
+
+base-images-supergateway: ## Build Supergateway images (stdio→HTTP wrapper)
+	@cd base-images && $(MAKE) supergateway
+
+base-images-binary: ## Build binary image (for Go, Rust executables)
+	@cd base-images && $(MAKE) binary
+
+base-images-all: ## Build ALL base images (python, node, supergateway, binary)
+	@cd base-images && $(MAKE) all supergateway binary
+
+base-images-import: ## Import base images to local k3d cluster
+	@cd base-images && $(MAKE) import-k3d
+
+base-images-clean: ## Remove local base images
+	@cd base-images && $(MAKE) clean
