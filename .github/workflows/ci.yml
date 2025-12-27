@@ -13,7 +13,6 @@ jobs:
     outputs:
       control-plane: ${{ steps.changes.outputs.control-plane }}
       mcp-operator: ${{ steps.changes.outputs.mcp-operator }}
-      universal_adapter: ${{ steps.changes.outputs.universal_adapter }}
       rbac-controller: ${{ steps.changes.outputs.rbac-controller }}
       chart: ${{ steps.changes.outputs.chart }}
     steps:
@@ -26,8 +25,6 @@ jobs:
               - 'control-plane/**'
             mcp-operator:
               - 'mcp-operator/**'
-            universal-adapter:
-              - 'universal-adapter/**'
             rbac-controller:
               - 'rbac-controller/**'
             chart:
@@ -94,37 +91,6 @@ jobs:
           file: ./mcp-operator/coverage.xml
           flags: mcp-operator
           name: mcp-operator-coverage
-          fail_ci_if_error: false
-
-  # Universal Adapter CI
-  universal-adapter:
-    runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.universal_adapter == 'true'
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-
-      - name: Set up Python 3.13
-        run: uv python install 3.13
-
-      - name: Install dependencies
-        working-directory: universal-adapter
-        run: uv sync --dev --frozen
-
-      - name: Run verification
-        working-directory: universal-adapter
-        run: make verify COVERAGE=1
-
-      - name: Upload coverage reports
-        uses: codecov/codecov-action@v4
-        with:
-          file: ./universal-adapter/coverage.xml
-          flags: universal-adapter
-          name: universal-adapter-coverage
           fail_ci_if_error: false
 
   # RBAC Controller CI
@@ -252,7 +218,6 @@ jobs:
         changes,
         control-plane,
         mcp-operator,
-        universal-adapter,
         rbac-controller,
         helm-chart,
         docker-control-plane,
@@ -284,14 +249,6 @@ jobs:
 
             if [[ "${{ github.event_name }}" == "push" && "${{ needs.docker-mcp-operator.result }}" != "success" ]]; then
               echo "MCP Operator Docker build failed"
-              exit 1
-            fi
-          fi
-
-          # Universal adapter checks
-          if [[ "${{ needs.changes.outputs.universal_adapter }}" == "true" ]]; then
-            if [[ "${{ needs.universal-adapter.result }}" != "success" ]]; then
-              echo "Universal adapter CI failed"
               exit 1
             fi
           fi

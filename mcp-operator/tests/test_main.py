@@ -141,9 +141,14 @@ class TestCoreMCPOperator:
                 ]
             }
         ]
-        # Mock _get_workspace_secret_keys to return empty set (no secrets)
-        with patch.object(operator, "_get_workspace_secret_keys", return_value=set()):
-            env_vars = operator._create_env_vars_from_packages(packages, "test-namespace")
+        # Mock methods to isolate the test
+        with (
+            patch.object(operator, "_get_workspace_secret_keys", return_value=set()),
+            patch.object(operator, "_select_package_for_cluster", return_value=None),
+        ):
+            env_vars = operator._create_env_vars_from_packages(
+                packages, "test-namespace", "test-server"
+            )
 
         assert len(env_vars) == 2
         assert env_vars[0].name == "LOG_LEVEL"
@@ -167,9 +172,14 @@ class TestCoreMCPOperator:
                 ]
             }
         ]
-        # Mock _get_workspace_secret_keys to return empty set (no secrets)
-        with patch.object(operator, "_get_workspace_secret_keys", return_value=set()):
-            env_vars = operator._create_env_vars_from_packages(packages, "test-namespace")
+        # Mock methods to isolate the test
+        with (
+            patch.object(operator, "_get_workspace_secret_keys", return_value=set()),
+            patch.object(operator, "_select_package_for_cluster", return_value=None),
+        ):
+            env_vars = operator._create_env_vars_from_packages(
+                packages, "test-namespace", "test-server"
+            )
 
         assert len(env_vars) == 1
         assert env_vars[0].name == "CONFIG"
@@ -194,8 +204,13 @@ class TestCoreMCPOperator:
             }
         ]
         # Mock API_KEY being in workspace-secrets
-        with patch.object(operator, "_get_workspace_secret_keys", return_value={"API_KEY"}):
-            env_vars = operator._create_env_vars_from_packages(packages, "test-namespace")
+        with (
+            patch.object(operator, "_get_workspace_secret_keys", return_value={"API_KEY"}),
+            patch.object(operator, "_select_package_for_cluster", return_value=None),
+        ):
+            env_vars = operator._create_env_vars_from_packages(
+                packages, "test-namespace", "test-server"
+            )
 
         # Should have both: API_KEY from secret reference, LOG_LEVEL from value
         assert len(env_vars) == 2
@@ -203,6 +218,160 @@ class TestCoreMCPOperator:
         assert env_vars[0].value_from is not None  # Secret reference
         assert env_vars[1].name == "LOG_LEVEL"
         assert env_vars[1].value == "info"
+
+    def test_create_env_vars_from_packages_extracts_bundle_url(
+        self, operator: CoreMCPOperator
+    ) -> None:
+        """Test that BUNDLE_URL is extracted from selected package identifier."""
+        packages = [
+            {
+                "identifier": "https://github.com/org/server/releases/download/v1.0.0/bundle-linux-amd64.tar.gz",
+                "environmentVariables": [
+                    {
+                        "name": "LOG_LEVEL",
+                        "default": "info",
+                    }
+                ],
+            }
+        ]
+        # Mock _select_package_for_cluster to return the package with identifier
+        with (
+            patch.object(operator, "_get_workspace_secret_keys", return_value=set()),
+            patch.object(operator, "_select_package_for_cluster", return_value=packages[0]),
+        ):
+            env_vars = operator._create_env_vars_from_packages(
+                packages, "test-namespace", "test-server"
+            )
+
+        # Should have BUNDLE_URL first, then LOG_LEVEL
+        assert len(env_vars) == 2
+        assert env_vars[0].name == "BUNDLE_URL"
+        assert (
+            env_vars[0].value
+            == "https://github.com/org/server/releases/download/v1.0.0/bundle-linux-amd64.tar.gz"
+        )
+        assert env_vars[1].name == "LOG_LEVEL"
+        assert env_vars[1].value == "info"
+
+    def test_select_package_for_cluster_prefers_matching_architecture(
+        self, operator: CoreMCPOperator
+    ) -> None:
+        """Test that _select_package_for_cluster selects package matching cluster arch."""
+        packages = [
+            {
+                "identifier": "https://example.com/bundle-linux-arm64.tar.gz",
+                "environmentVariables": [],
+            },
+            {
+                "identifier": "https://example.com/bundle-linux-amd64.tar.gz",
+                "environmentVariables": [],
+            },
+        ]
+        # Mock cluster with amd64 architecture
+        with patch.object(operator, "_get_cluster_architectures", return_value={"amd64"}):
+            selected = operator._select_package_for_cluster(packages, "test-server")
+
+        assert selected is not None
+        assert selected["identifier"] == "https://example.com/bundle-linux-amd64.tar.gz"
+
+    def test_select_package_for_cluster_selects_arm64_for_arm_cluster(
+        self, operator: CoreMCPOperator
+    ) -> None:
+        """Test that _select_package_for_cluster selects arm64 package for arm cluster."""
+        packages = [
+            {
+                "identifier": "https://example.com/bundle-linux-amd64.tar.gz",
+                "environmentVariables": [],
+            },
+            {
+                "identifier": "https://example.com/bundle-linux-arm64.tar.gz",
+                "environmentVariables": [],
+            },
+        ]
+        # Mock cluster with arm64 architecture
+        with patch.object(operator, "_get_cluster_architectures", return_value={"arm64"}):
+            selected = operator._select_package_for_cluster(packages, "test-server")
+
+        assert selected is not None
+        assert selected["identifier"] == "https://example.com/bundle-linux-arm64.tar.gz"
+
+    def test_select_package_for_cluster_raises_error_on_arch_mismatch(
+        self, operator: CoreMCPOperator
+    ) -> None:
+        """Test that _select_package_for_cluster raises ValueError when no arch matches."""
+        packages = [
+            {
+                "identifier": "https://example.com/bundle-linux-arm64.tar.gz",
+                "environmentVariables": [],
+            },
+        ]
+        # Mock cluster with amd64 architecture only
+        with patch.object(operator, "_get_cluster_architectures", return_value={"amd64"}):
+            with pytest.raises(ValueError, match="No compatible package"):
+                operator._select_package_for_cluster(packages, "test-server")
+
+    def test_select_package_for_cluster_falls_back_when_arch_unknown(
+        self, operator: CoreMCPOperator
+    ) -> None:
+        """Test that _select_package_for_cluster falls back to amd64 preference when arch unknown."""
+        packages = [
+            {
+                "identifier": "https://example.com/bundle-linux-arm64.tar.gz",
+                "environmentVariables": [],
+            },
+            {
+                "identifier": "https://example.com/bundle-linux-amd64.tar.gz",
+                "environmentVariables": [],
+            },
+        ]
+        # Mock cluster architecture detection failure (returns empty set)
+        with patch.object(operator, "_get_cluster_architectures", return_value=set()):
+            selected = operator._select_package_for_cluster(packages, "test-server")
+
+        # Should prefer amd64 when arch is unknown
+        assert selected is not None
+        assert selected["identifier"] == "https://example.com/bundle-linux-amd64.tar.gz"
+
+    def test_select_package_for_cluster_returns_none_for_no_identifiers(
+        self, operator: CoreMCPOperator
+    ) -> None:
+        """Test that _select_package_for_cluster returns None when packages have no identifiers."""
+        packages = [
+            {
+                "environmentVariables": [{"name": "LOG_LEVEL", "default": "info"}],
+            }
+        ]
+        result = operator._select_package_for_cluster(packages, "test-server")
+        assert result is None
+
+    def test_get_cluster_architectures_success(self, operator: CoreMCPOperator) -> None:
+        """Test _get_cluster_architectures returns architectures from node labels."""
+        # Create mock nodes with architecture labels
+        mock_node1 = MagicMock()
+        mock_node1.metadata.labels = {"kubernetes.io/arch": "amd64"}
+        mock_node2 = MagicMock()
+        mock_node2.metadata.labels = {"kubernetes.io/arch": "arm64"}
+        mock_node3 = MagicMock()
+        mock_node3.metadata.labels = {"kubernetes.io/arch": "amd64"}  # Duplicate
+
+        mock_node_list = MagicMock()
+        mock_node_list.items = [mock_node1, mock_node2, mock_node3]
+
+        with patch.object(operator.k8s_core, "list_node", return_value=mock_node_list):
+            archs = operator._get_cluster_architectures()
+
+        assert archs == {"amd64", "arm64"}
+
+    def test_get_cluster_architectures_handles_api_error(self, operator: CoreMCPOperator) -> None:
+        """Test _get_cluster_architectures returns empty set on API error."""
+        with patch.object(
+            operator.k8s_core,
+            "list_node",
+            side_effect=ApiException(status=403, reason="Forbidden"),
+        ):
+            archs = operator._get_cluster_architectures()
+
+        assert archs == set()
 
     def test_create_deployment(self, operator: CoreMCPOperator) -> None:
         """Test deployment creation calls the HTTP deployment method."""

@@ -2,6 +2,7 @@
 Server Router for NimbleTools Control Plane
 """
 
+import json
 import logging
 import re
 from datetime import UTC, datetime
@@ -128,11 +129,10 @@ def _validate_mcpb_packages(packages: list[Any], cluster_arch: str) -> None:
         available_archs = []
         for p in mcpb_packages:
             filename = _extract_mcpb_filename(p.identifier)
-            if filename:
-                # Extract arch from filename like "mcp-echo-v1.0.0-linux-amd64.mcpb"
-                if "-linux-" in filename:
-                    arch_part = filename.split("-linux-")[-1].replace(".mcpb", "")
-                    available_archs.append(arch_part)
+            # Extract arch from filename like "mcp-echo-v1.0.0-linux-amd64.mcpb"
+            if filename and "-linux-" in filename:
+                arch_part = filename.split("-linux-")[-1].replace(".mcpb", "")
+                available_archs.append(arch_part)
 
         raise MCPBValidationError(
             message=f"No MCPB package available for cluster architecture '{cluster_arch}'. "
@@ -602,6 +602,13 @@ async def deploy_server_to_workspace(
 ) -> ServerDeployResponse:
     """Deploy server to workspace - accepts MCP server definition from registry"""
 
+    # Log full request payload for debugging
+    logger.info(
+        "POST /%s/servers - incoming payload:\n%s",
+        workspace_id,
+        json.dumps(server_request, indent=2, default=str),
+    )
+
     try:
         # The CLI sends the server definition in a "server" field
         mcp_server_data = server_request.get("server", server_request)
@@ -761,6 +768,9 @@ def _parse_log_line(log_line: str) -> tuple[datetime | None, LogLevel, str]:
         timestamp_str, level_str, message = match.groups()
         try:
             timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+            # Ensure timezone-aware for consistent comparison
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=UTC)
             level = _parse_log_level(level_str)
             return timestamp, level, message
         except (ValueError, KeyError):
@@ -774,6 +784,9 @@ def _parse_log_line(log_line: str) -> tuple[datetime | None, LogLevel, str]:
         timestamp_str, level_str, message = match.groups()
         try:
             timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+            # Ensure timezone-aware for consistent comparison
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=UTC)
             level = _parse_log_level(level_str)
             return timestamp, level, message
         except (ValueError, KeyError):

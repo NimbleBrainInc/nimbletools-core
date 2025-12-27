@@ -1,5 +1,5 @@
 # NimbleTools Core - Root Makefile
-.PHONY: help install verify clean dev dev-verify dev-build dev-deploy dev-smoke dev-quick dev-status dev-bump publish release base-images
+.PHONY: help install verify clean dev dev-verify dev-build dev-deploy dev-smoke dev-quick dev-status dev-bump publish release base-images version set-version
 
 # Version from VERSION file
 VERSION := $(shell cat VERSION 2>/dev/null || echo "0.1.0")
@@ -13,16 +13,16 @@ help: ## Show this help message
 	@echo "========================================"
 	@echo ""
 	@echo "Development Workflow:"
-	@grep -E '^dev[a-zA-Z_-]*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^dev[a-zA-Z_-]*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Testing & Quality:"
-	@grep -E '^(verify|install|clean)[a-zA-Z_-]*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^(verify|install|clean)[a-zA-Z_-]*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Base Images (MCPB):"
-	@grep -E '^base-images[a-zA-Z_-]*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^base-images[a-zA-Z_-]*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Publishing & Release:"
-	@grep -E '^(publish|release|tag|version)[a-zA-Z_-]*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^(publish|release|tag|version|set-version|github-release)[a-zA-Z_-]*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}'
 
 # =============================================================================
 # Development Workflow (primary interface)

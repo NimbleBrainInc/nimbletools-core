@@ -1,6 +1,10 @@
 """Tests for server router helper functions."""
 
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock, patch
+
+import pytest
+from fastapi import HTTPException
+from kubernetes.client.rest import ApiException
 
 from nimbletools_control_plane.mcp_server_models import (
     EnvironmentVariable,
@@ -10,8 +14,6 @@ from nimbletools_control_plane.mcp_server_models import (
     Repository,
     TransportProtocol,
 )
-import pytest
-
 from nimbletools_control_plane.routes.servers import (
     MCPBValidationError,
     _build_labels_and_annotations,
@@ -22,6 +24,7 @@ from nimbletools_control_plane.routes.servers import (
     _find_mcpb_package_for_arch,
     _serialize_packages,
     _validate_mcpb_packages,
+    deploy_server_to_workspace,
 )
 
 
@@ -328,7 +331,9 @@ class TestExtractContainerConfig:
         # New schema: identifier is full URL
         mcpb_package = Mock(spec=Package)
         mcpb_package.registryType = "mcpb"
-        mcpb_package.identifier = "https://example.com/releases/v1.0.0/mcp-echo-v1.0.0-linux-amd64.mcpb"
+        mcpb_package.identifier = (
+            "https://example.com/releases/v1.0.0/mcp-echo-v1.0.0-linux-amd64.mcpb"
+        )
         mcpb_package.version = "1.0.0"
         mcpb_package.fileSha256 = None  # No hash provided
 
@@ -754,12 +759,6 @@ class TestDeployServerValidation:
     @pytest.mark.asyncio
     async def test_deploy_rejects_invalid_mcpb_url(self, invalid_url_server_data):
         """Test that deploy endpoint returns 422 for invalid MCPB URL."""
-        from unittest.mock import AsyncMock, patch
-
-        from fastapi import HTTPException
-
-        from nimbletools_control_plane.routes.servers import deploy_server_to_workspace
-
         mock_request = Mock()
 
         with patch(
@@ -781,12 +780,6 @@ class TestDeployServerValidation:
     @pytest.mark.asyncio
     async def test_deploy_rejects_wrong_architecture(self, wrong_arch_server_data):
         """Test that deploy endpoint returns 422 when no matching architecture."""
-        from unittest.mock import patch
-
-        from fastapi import HTTPException
-
-        from nimbletools_control_plane.routes.servers import deploy_server_to_workspace
-
         mock_request = Mock()
 
         # Cluster is amd64, but package only has arm64
@@ -810,16 +803,10 @@ class TestDeployServerValidation:
     @pytest.mark.asyncio
     async def test_deploy_accepts_valid_mcpb_packages(self, valid_mcpb_server_data):
         """Test that deploy endpoint proceeds with valid MCPB packages."""
-        from unittest.mock import MagicMock, patch
-
-        from nimbletools_control_plane.routes.servers import deploy_server_to_workspace
-
         mock_request = Mock()
         mock_k8s_custom = MagicMock()
 
         # Mock the 404 response to trigger create path
-        from kubernetes.client.rest import ApiException
-
         mock_k8s_custom.get_namespaced_custom_object.side_effect = ApiException(
             status=404, reason="Not Found"
         )

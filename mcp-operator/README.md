@@ -5,7 +5,7 @@ The NimbleTools Core Operator is a Kubernetes controller that manages the lifecy
 ## Features
 
 - **MCPService Management**: Creates and manages Kubernetes deployments, services, and configs for MCP services
-- **HTTP and stdio Support**: Handles both direct HTTP MCP services and stdio-based services via universal adapter
+- **HTTP and stdio Support**: Handles HTTP MCP services and stdio-based services via MCPB supergateway base images
 - **Reactive Architecture**: Responds to MCPService resources created by the control plane
 - **Auto-scaling**: Manual scaling support via replica count updates
 - **Security**: Runs with least-privilege security contexts
@@ -70,16 +70,14 @@ metadata:
   name: echo-mcp
   namespace: my-workspace
 spec:
-  description: "Echo MCP service using stdio"
+  description: "Echo MCP service using MCPB"
   container:
-    image: ghcr.io/nimblebrain/nimbletools-core-universal-adapter:latest
+    image: nimbletools/mcpb-python:3.14
     port: 8000
+    bundleUrl: https://github.com/NimbleBrainInc/mcp-echo/releases/download/v0.1.0/mcp-echo-v0.1.0-linux-amd64.mcpb
+    bundleSha256: abc123...
   deployment:
-    type: stdio
-    stdio:
-      executable: npx
-      args: ["@modelcontextprotocol/server-echo"]
-      workingDir: /tmp
+    type: http
   tools:
     - name: echo
       description: "Echo back input"

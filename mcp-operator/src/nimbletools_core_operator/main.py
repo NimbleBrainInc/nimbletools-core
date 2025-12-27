@@ -161,6 +161,92 @@ class CoreMCPOperator:
         ]
         return namespace not in system_namespaces
 
+    def _get_cluster_architectures(self) -> set[str]:
+        """Get available CPU architectures from cluster nodes.
+
+        Returns:
+            Set of architecture strings (e.g., {"amd64", "arm64"})
+        """
+        try:
+            nodes = self.k8s_core.list_node()
+            architectures = set()
+            for node in nodes.items:
+                if node.metadata.labels:
+                    arch = node.metadata.labels.get("kubernetes.io/arch")
+                    if arch:
+                        architectures.add(arch)
+            logger.info("Detected cluster architectures: %s", architectures)
+            return architectures
+        except ApiException as e:
+            logger.warning("Failed to query node architectures: %s", e.reason)
+            # Return empty set - validation will be skipped
+            return set()
+
+    def _select_package_for_cluster(
+        self, packages: list[dict[str, Any]], server_name: str
+    ) -> dict[str, Any] | None:
+        """Select appropriate package based on cluster architecture.
+
+        Args:
+            packages: List of package definitions with identifier fields
+            server_name: Name of the MCP server (for error messages)
+
+        Returns:
+            Selected package dict, or None if packages have no identifiers
+
+        Raises:
+            ValueError: If no package matches available cluster architectures
+        """
+        if not packages:
+            return None
+
+        # Check if any packages have identifiers (MCPB bundles)
+        packages_with_identifiers = [p for p in packages if p.get("identifier")]
+        if not packages_with_identifiers:
+            return None
+
+        # Get cluster architectures
+        cluster_archs = self._get_cluster_architectures()
+
+        # If we couldn't detect architectures, fall back to amd64 preference
+        if not cluster_archs:
+            logger.warning(
+                "Could not detect cluster architectures, falling back to amd64 preference"
+            )
+            for package in packages_with_identifiers:
+                identifier = package.get("identifier", "")
+                if "amd64" in identifier or "x86_64" in identifier:
+                    return package
+            return packages_with_identifiers[0]
+
+        # Map common architecture naming conventions
+        arch_patterns = {
+            "amd64": ["amd64", "x86_64", "x64"],
+            "arm64": ["arm64", "aarch64"],
+        }
+
+        # Find a package that matches cluster architecture
+        for cluster_arch in cluster_archs:
+            patterns = arch_patterns.get(cluster_arch, [cluster_arch])
+            for package in packages_with_identifiers:
+                identifier = package.get("identifier", "")
+                if any(pattern in identifier for pattern in patterns):
+                    logger.info(
+                        "Selected package for %s architecture: %s",
+                        cluster_arch,
+                        identifier,
+                    )
+                    return package
+
+        # No matching package found - raise error
+        available_archs = ", ".join(sorted(cluster_archs))
+        package_identifiers = [p.get("identifier", "unknown") for p in packages_with_identifiers]
+        raise ValueError(
+            f"No compatible package for MCP server '{server_name}'. "
+            f"Cluster has architectures: [{available_archs}]. "
+            f"Available packages: {package_identifiers}"
+        )
+
     def detect_deployment_type(self, spec: dict[str, Any]) -> str:
         """Detect deployment type from service specification.
 
@@ -316,7 +402,7 @@ class CoreMCPOperator:
                                         spec.get("environment", {})
                                     ),
                                     *self._create_env_vars_from_packages(
-                                        spec.get("packages", []), namespace
+                                        spec.get("packages", []), namespace, name
                                     ),
                                 ],
                                 volume_mounts=[V1VolumeMount(name="tmp-volume", mount_path="/tmp")],
@@ -386,7 +472,7 @@ class CoreMCPOperator:
         return args
 
     def _create_env_vars_from_packages(
-        self, packages: list[dict[str, Any]], namespace: str
+        self, packages: list[dict[str, Any]], namespace: str, server_name: str
     ) -> list[V1EnvVar]:
         """Create environment variables from MCP server packages.
 
@@ -394,11 +480,31 @@ class CoreMCPOperator:
         1. Check if it exists in workspace-secrets (regardless of isSecret flag)
         2. If found in secrets, use secret reference
         3. If not in secrets, use value or default from package definition
+
+        Also extracts BUNDLE_URL from package identifier for MCPB deployments.
+        Validates that a package exists for the cluster's CPU architecture.
+
+        Args:
+            packages: List of package definitions
+            namespace: Kubernetes namespace for secret lookups
+            server_name: Name of the MCP server (for error messages)
+
+        Raises:
+            ValueError: If no package matches cluster architecture
         """
         env_vars = []
 
         # Get workspace secrets to check which keys are available
         workspace_secret_keys = self._get_workspace_secret_keys(namespace)
+
+        # Select package based on cluster architecture (validates compatibility)
+        selected_package = self._select_package_for_cluster(packages, server_name)
+
+        # Set BUNDLE_URL from selected package identifier
+        if selected_package:
+            bundle_url = selected_package.get("identifier")
+            if bundle_url:
+                env_vars.append(V1EnvVar(name="BUNDLE_URL", value=bundle_url))
 
         for package in packages:
             env_variables = package.get("environmentVariables", [])

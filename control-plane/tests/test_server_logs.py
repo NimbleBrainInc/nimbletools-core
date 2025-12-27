@@ -74,6 +74,31 @@ class TestLogLineParsing:
         assert level == LogLevel.INFO
         assert message == line
 
+    def test_parse_iso_format_without_z_is_timezone_aware(self):
+        """Test that timestamps without Z suffix are parsed as timezone-aware UTC.
+
+        This prevents comparison errors between offset-naive and offset-aware datetimes
+        when filtering logs by since/until parameters.
+        """
+        # ISO format without Z (can occur in some log formats)
+        line = "2024-01-01T12:00:00 [INFO] Message without Z suffix"
+        timestamp, level, message = _parse_log_line(line)
+
+        assert timestamp is not None
+        # Critical: timestamp must be timezone-aware to compare with request filters
+        assert timestamp.tzinfo is not None
+        assert timestamp.tzinfo == UTC
+        assert level == LogLevel.INFO
+
+    def test_parse_iso_format_with_z_is_timezone_aware(self):
+        """Test that timestamps with Z suffix are parsed as timezone-aware."""
+        line = "2024-01-01T12:00:00Z [INFO] Message with Z suffix"
+        timestamp, level, message = _parse_log_line(line)
+
+        assert timestamp is not None
+        assert timestamp.tzinfo is not None
+        assert level == LogLevel.INFO
+
 
 class TestServerLogsEndpoint:
     """Test server logs endpoint functionality."""

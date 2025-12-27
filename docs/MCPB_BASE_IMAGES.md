@@ -288,28 +288,47 @@ my-server-v1.0.0-linux-amd64.mcpb (tar.gz for binary, zip for stdio)
 
 ## server.json Configuration
 
-In the MCP server registry, specify the runtime in `nimbletools_runtime`:
+In the MCP server registry, specify the runtime in `_meta` and provide separate packages per architecture:
 
 ```json
 {
   "name": "ai.nimbletools/my-server",
   "version": "1.0.0",
-  "packages": [{
-    "registryType": "mcpb",
-    "registryBaseUrl": "https://github.com/org/my-server/releases/download",
-    "identifier": "my-server",
-    "version": "1.0.0",
-    "transport": { "type": "streamable-http" },
-    "sha256": {
-      "linux-amd64": "abc123...",
-      "linux-arm64": "def456..."
+  "packages": [
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/org/my-server/releases/download/v1.0.0/my-server-v1.0.0-linux-amd64.mcpb",
+      "version": "1.0.0",
+      "fileSha256": "abc123...",
+      "transport": { "type": "streamable-http" }
+    },
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/org/my-server/releases/download/v1.0.0/my-server-v1.0.0-linux-arm64.mcpb",
+      "version": "1.0.0",
+      "fileSha256": "def456...",
+      "transport": { "type": "streamable-http" }
     }
-  }],
-  "nimbletools_runtime": {
-    "runtime": "python:3.14"
+  ],
+  "_meta": {
+    "ai.nimbletools.mcp/v1": {
+      "runtime": "python:3.14"
+    }
   }
 }
 ```
+
+### Package URL Requirements
+
+MCPB package URLs (the `identifier` field) must follow these requirements:
+
+1. **Must end with `.mcpb`**: The URL must end with a valid `.mcpb` filename
+2. **Must contain architecture**: The filename must include the target architecture (e.g., `linux-amd64.mcpb` or `linux-arm64.mcpb`)
+3. **One package per architecture**: Create separate package entries for each supported architecture
+
+The control-plane validates these requirements at deploy time and returns a `422 Unprocessable Entity` error if:
+- The URL doesn't end with a `.mcpb` filename (`INVALID_MCPB_URL`)
+- No package matches the cluster's architecture (`ARCHITECTURE_MISMATCH`)
 
 ### Runtime Values
 
