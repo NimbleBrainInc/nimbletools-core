@@ -386,7 +386,6 @@ main() {
     
     # Component definitions
     local components=(
-        "universal-adapter:universal-adapter"
         "mcp-operator:mcp-operator"
         "control-plane:control-plane"
         "rbac-controller:rbac-controller"

@@ -159,7 +159,7 @@ spec:
                         properties:
                           type:
                             type: string
-                            enum: ["stdio", "streamable-http"]
+                            enum: ["streamable-http"]
                       runtimeHint:
                         type: string
                         description: "Runtime command hint (e.g., 'npx', 'uvx', 'docker')"

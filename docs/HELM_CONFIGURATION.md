@@ -19,7 +19,7 @@ The NimbleTools Core Helm chart deploys a complete MCP platform with the followi
 - **Control Plane**: REST API for managing workspaces and servers
 - **Operator**: Kubernetes operator managing MCPService lifecycle
 - **RBAC Controller**: Manages workspace-level access control
-- **Universal Adapter**: Wraps stdio servers for HTTP transport
+- **MCPB Base Images**: Pre-built images for Python, Node.js, supergateway, and binary runtimes
 
 ## Basic Configuration
 
@@ -354,19 +354,6 @@ serviceAccount:
 ```
 
 ## Resource Management
-
-### Default MCP Service Resources
-
-```yaml
-universalAdapter:
-  resources:
-    limits:
-      cpu: "500m"
-      memory: "512Mi"
-    requests:
-      cpu: "100m"
-      memory: "128Mi"
-```
 
 ### Node Selection
 

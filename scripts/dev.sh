@@ -108,7 +108,6 @@ deploy() {
         --set operator.image.pullPolicy=Never \
         --set controlPlane.image.pullPolicy=Never \
         --set rbacController.image.pullPolicy=Never \
-        --set universalAdapter.image.pullPolicy=Never \
         --wait --timeout 180s
 
     log_success "Deployed to k3d"

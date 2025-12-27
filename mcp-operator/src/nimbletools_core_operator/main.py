@@ -3,7 +3,6 @@
 NimbleTools Core MCP Operator for Kubernetes
 """
 
-import json
 import logging
 import os
 from datetime import UTC, datetime
@@ -72,10 +71,6 @@ class CoreMCPOperator:
     def __init__(self) -> None:
         # Get operator's own namespace (where control-plane should also be)
         self.operator_namespace = self._get_operator_namespace()
-        self.universal_adapter_image = os.getenv(
-            "UNIVERSAL_ADAPTER_IMAGE",
-            "ghcr.io/nimblebrain/nimbletools-core-universal-adapter:latest",
-        )
 
         # Kubernetes API clients
         self.k8s_core = client.CoreV1Api()
@@ -166,24 +161,108 @@ class CoreMCPOperator:
         ]
         return namespace not in system_namespaces
 
+    def _get_cluster_architectures(self) -> set[str]:
+        """Get available CPU architectures from cluster nodes.
+
+        Returns:
+            Set of architecture strings (e.g., {"amd64", "arm64"})
+        """
+        try:
+            nodes = self.k8s_core.list_node()
+            architectures = set()
+            for node in nodes.items:
+                if node.metadata.labels:
+                    arch = node.metadata.labels.get("kubernetes.io/arch")
+                    if arch:
+                        architectures.add(arch)
+            logger.info("Detected cluster architectures: %s", architectures)
+            return architectures
+        except ApiException as e:
+            logger.warning("Failed to query node architectures: %s", e.reason)
+            # Return empty set - validation will be skipped
+            return set()
+
+    def _select_package_for_cluster(
+        self, packages: list[dict[str, Any]], server_name: str
+    ) -> dict[str, Any] | None:
+        """Select appropriate package based on cluster architecture.
+
+        Args:
+            packages: List of package definitions with identifier fields
+            server_name: Name of the MCP server (for error messages)
+
+        Returns:
+            Selected package dict, or None if packages have no identifiers
+
+        Raises:
+            ValueError: If no package matches available cluster architectures
+        """
+        if not packages:
+            return None
+
+        # Check if any packages have identifiers (MCPB bundles)
+        packages_with_identifiers = [p for p in packages if p.get("identifier")]
+        if not packages_with_identifiers:
+            return None
+
+        # Get cluster architectures
+        cluster_archs = self._get_cluster_architectures()
+
+        # If we couldn't detect architectures, fall back to amd64 preference
+        if not cluster_archs:
+            logger.warning(
+                "Could not detect cluster architectures, falling back to amd64 preference"
+            )
+            for package in packages_with_identifiers:
+                identifier = package.get("identifier", "")
+                if "amd64" in identifier or "x86_64" in identifier:
+                    return package
+            return packages_with_identifiers[0]
+
+        # Map common architecture naming conventions
+        arch_patterns = {
+            "amd64": ["amd64", "x86_64", "x64"],
+            "arm64": ["arm64", "aarch64"],
+        }
+
+        # Find a package that matches cluster architecture
+        for cluster_arch in cluster_archs:
+            patterns = arch_patterns.get(cluster_arch, [cluster_arch])
+            for package in packages_with_identifiers:
+                identifier = package.get("identifier", "")
+                if any(pattern in identifier for pattern in patterns):
+                    logger.info(
+                        "Selected package for %s architecture: %s",
+                        cluster_arch,
+                        identifier,
+                    )
+                    return package
+
+        # No matching package found - raise error
+        available_archs = ", ".join(sorted(cluster_archs))
+        package_identifiers = [p.get("identifier", "unknown") for p in packages_with_identifiers]
+        raise ValueError(
+            f"No compatible package for MCP server '{server_name}'. "
+            f"Cluster has architectures: [{available_archs}]. "
+            f"Available packages: {package_identifiers}"
+        )
+
     def detect_deployment_type(self, spec: dict[str, Any]) -> str:
-        """Detect deployment type from service specification"""
-        # Check packages for transport type - this determines deployment strategy
+        """Detect deployment type from service specification.
+
+        With MCPB, all deployments are HTTP-based. stdio servers use the
+        supergateway runtime which wraps stdio as HTTP.
+        """
+        # Validate transport type if specified
         packages = spec.get("packages", [])
         for package in packages:
             transport = package.get("transport", {})
             transport_type = transport.get("type")
 
-            if transport_type == "stdio":
-                return "stdio"
-            elif transport_type == "streamable-http":
-                return "http"
-            elif transport_type == "sse":
-                raise ValueError(
-                    "SSE transport type is not supported. Use 'stdio' or 'streamable-http'."
-                )
+            if transport_type == "sse":
+                raise ValueError("SSE transport type is not supported. Use 'streamable-http'.")
 
-        # Default to HTTP for no transport specified
+        # All MCPB deployments are HTTP-based
         return "http"
 
     def _determine_image_pull_policy(self, image: str) -> str:
@@ -235,164 +314,9 @@ class CoreMCPOperator:
         name: str,
         spec: dict[str, Any],
         namespace: str,
-        deployment_type: str,
     ) -> V1Deployment:
-        """Create deployment based on type"""
-        if deployment_type == "stdio":
-            return self._create_universal_adapter_deployment(name, spec, namespace)
-        else:
-            return self._create_http_deployment(name, spec, namespace)
-
-    def _parse_runtime_arguments(self, runtime_args: list[dict[str, Any] | str]) -> list[str]:
-        """Parse runtime arguments from package definition to string list"""
-        args = []
-        for arg in runtime_args:
-            if isinstance(arg, dict):
-                arg_type = arg.get("type")
-                if arg_type == "positional":
-                    value = arg.get("value", "")
-                    if value:
-                        args.append(value)
-                elif arg_type == "named":
-                    arg_name = arg.get("name", "")
-                    value = arg.get("value", "")
-                    if arg_name:
-                        args.append(arg_name)
-                        if value:
-                            args.append(value)
-            else:
-                args.append(str(arg))
-        return args
-
-    def _create_universal_adapter_deployment(
-        self, name: str, spec: dict[str, Any], namespace: str
-    ) -> V1Deployment:
-        """Create deployment using universal adapter for stdio servers"""
-
-        # Extract stdio configuration from packages (standard MCP approach)
-        executable = ""
-        args = []
-        working_dir = "/tmp"
-
-        packages = spec.get("packages", [])
-        for package in packages:
-            if package.get("transport", {}).get("type") == "stdio":
-                # Use runtimeHint and runtimeArguments to construct the command
-                runtime_hint = package.get("runtimeHint", "")
-                runtime_args = package.get("runtimeArguments", [])
-
-                if runtime_hint:
-                    executable = runtime_hint
-                    args = self._parse_runtime_arguments(runtime_args)
-                break
-
-        # If still no executable, fail with clear error
-        if not executable:
-            raise ValueError(
-                f"No executable found for stdio server '{name}'. "
-                "Provide runtimeHint and runtimeArguments in the package definition."
-            )
-
-        # Extract capabilities from spec
-        tools = spec.get("tools", [])
-        mcp_resources = spec.get("mcp_resources", [])
-        prompts = spec.get("prompts", [])
-
-        # Get container configuration
-        container_config = spec.get("container", {})
-        port = container_config.get("port", 8000)
-
-        # Get resource requirements
-        resource_config = spec.get("resources", {})
-        resources_spec = V1ResourceRequirements(
-            requests=resource_config.get("requests", {"cpu": "50m", "memory": "128Mi"}),
-            limits=resource_config.get("limits", {"cpu": "200m", "memory": "256Mi"}),
-        )
-
-        # Get packages from spec
-        packages = spec.get("packages", [])
-
-        # Extract environment variable names to forward to subprocess
-        env_var_names = []
-        for package in packages:
-            for env_var in package.get("environmentVariables", []):
-                env_var_names.append(env_var.get("name"))
-
-        # Create environment variables
-        env_vars = [
-            V1EnvVar(name="MCP_SERVER_NAME", value=name),
-            V1EnvVar(name="MCP_EXECUTABLE", value=executable),
-            V1EnvVar(name="MCP_ARGS", value=json.dumps(args)),
-            V1EnvVar(name="MCP_WORKING_DIR", value=working_dir),
-            V1EnvVar(name="MCP_TOOLS", value=json.dumps(tools)),
-            V1EnvVar(name="MCP_RESOURCES", value=json.dumps(mcp_resources)),
-            V1EnvVar(name="MCP_PROMPTS", value=json.dumps(prompts)),
-            V1EnvVar(name="MCP_ENV_VARS", value=json.dumps(env_var_names)),
-            V1EnvVar(name="PORT", value=str(port)),
-            *self._create_env_vars_from_environment(spec.get("environment", {})),
-            *self._create_env_vars_from_packages(packages, namespace),
-        ]
-
-        return V1Deployment(
-            metadata=V1ObjectMeta(
-                name=f"{name}-deployment",
-                namespace=namespace,
-                labels={
-                    "app": name,
-                    "mcp.nimbletools.dev/service": "true",
-                    "mcp.nimbletools.dev/server": name,
-                    "mcp.nimbletools.dev/managed-by": "nimbletools-core-operator",
-                    "mcp.nimbletools.dev/deployment-type": "universal-adapter",
-                },
-            ),
-            spec=V1DeploymentSpec(
-                replicas=spec.get("replicas", 1),
-                selector=V1LabelSelector(match_labels={"app": name}),
-                template=V1PodTemplateSpec(
-                    metadata=V1ObjectMeta(
-                        labels={"app": name, "mcp.nimbletools.dev/service": "true"}
-                    ),
-                    spec=V1PodSpec(
-                        security_context=V1PodSecurityContext(
-                            run_as_non_root=True,
-                            run_as_user=1000,
-                            fs_group=1000,
-                        ),
-                        containers=[
-                            V1Container(
-                                name="universal-adapter",
-                                image=self.universal_adapter_image,
-                                image_pull_policy="IfNotPresent",
-                                security_context=V1SecurityContext(
-                                    run_as_non_root=True,
-                                    run_as_user=1000,
-                                    allow_privilege_escalation=False,
-                                    read_only_root_filesystem=True,
-                                    capabilities=V1Capabilities(drop=["ALL"]),
-                                ),
-                                ports=[V1ContainerPort(container_port=port, name="http")],
-                                resources=resources_spec,
-                                env=env_vars,
-                                volume_mounts=[V1VolumeMount(name="tmp-volume", mount_path="/tmp")],
-                                liveness_probe=V1Probe(
-                                    http_get=V1HTTPGetAction(path="/health", port="http"),
-                                    initial_delay_seconds=30,
-                                    period_seconds=10,
-                                    failure_threshold=3,
-                                ),
-                                readiness_probe=V1Probe(
-                                    http_get=V1HTTPGetAction(path="/health", port="http"),
-                                    initial_delay_seconds=30,
-                                    period_seconds=5,
-                                    failure_threshold=3,
-                                ),
-                            )
-                        ],
-                        volumes=[V1Volume(name="tmp-volume", empty_dir=V1EmptyDirVolumeSource())],
-                    ),
-                ),
-            ),
-        )
+        """Create HTTP deployment for MCPB-based MCP servers."""
+        return self._create_http_deployment(name, spec, namespace)
 
     def _create_http_deployment(
         self, name: str, spec: dict[str, Any], namespace: str
@@ -478,7 +402,7 @@ class CoreMCPOperator:
                                         spec.get("environment", {})
                                     ),
                                     *self._create_env_vars_from_packages(
-                                        spec.get("packages", []), namespace
+                                        spec.get("packages", []), namespace, name
                                     ),
                                 ],
                                 volume_mounts=[V1VolumeMount(name="tmp-volume", mount_path="/tmp")],
@@ -548,7 +472,7 @@ class CoreMCPOperator:
         return args
 
     def _create_env_vars_from_packages(
-        self, packages: list[dict[str, Any]], namespace: str
+        self, packages: list[dict[str, Any]], namespace: str, server_name: str
     ) -> list[V1EnvVar]:
         """Create environment variables from MCP server packages.
 
@@ -556,11 +480,31 @@ class CoreMCPOperator:
         1. Check if it exists in workspace-secrets (regardless of isSecret flag)
         2. If found in secrets, use secret reference
         3. If not in secrets, use value or default from package definition
+
+        Also extracts BUNDLE_URL from package identifier for MCPB deployments.
+        Validates that a package exists for the cluster's CPU architecture.
+
+        Args:
+            packages: List of package definitions
+            namespace: Kubernetes namespace for secret lookups
+            server_name: Name of the MCP server (for error messages)
+
+        Raises:
+            ValueError: If no package matches cluster architecture
         """
         env_vars = []
 
         # Get workspace secrets to check which keys are available
         workspace_secret_keys = self._get_workspace_secret_keys(namespace)
+
+        # Select package based on cluster architecture (validates compatibility)
+        selected_package = self._select_package_for_cluster(packages, server_name)
+
+        # Set BUNDLE_URL from selected package identifier
+        if selected_package:
+            bundle_url = selected_package.get("identifier")
+            if bundle_url:
+                env_vars.append(V1EnvVar(name="BUNDLE_URL", value=bundle_url))
 
         for package in packages:
             env_variables = package.get("environmentVariables", [])
@@ -781,26 +725,22 @@ async def create_mcpservice(spec, name, namespace, logger, **_kwargs):  # type: 
         spec_for_deployment = dict(spec) if hasattr(spec, "__iter__") else spec
         logger.info(f"Creating MCPService {name} from provided spec (templates generated by CLI)")
 
-        # Detect deployment type
-        deployment_type = operator.detect_deployment_type(spec_for_deployment)
-        logger.info(f"Detected deployment type: {deployment_type}")
+        # Validate transport types
+        operator.detect_deployment_type(spec_for_deployment)
 
-        # Create ConfigMap for HTTP services (stdio uses environment variables)
-        if deployment_type != "stdio":
-            full_config = {
-                "apiVersion": "mcp.nimbletools.dev/v1",
-                "kind": "MCPService",
-                "metadata": {"name": name},
-                "spec": spec_for_deployment,
-            }
-            configmap_manifest = operator.create_configmap(name, full_config, namespace)
-            k8s_core.create_namespaced_config_map(namespace=namespace, body=configmap_manifest)
-            logger.info(f"Created ConfigMap for {name}")
+        # Create ConfigMap for the MCP service
+        full_config = {
+            "apiVersion": "mcp.nimbletools.dev/v1",
+            "kind": "MCPService",
+            "metadata": {"name": name},
+            "spec": spec_for_deployment,
+        }
+        configmap_manifest = operator.create_configmap(name, full_config, namespace)
+        k8s_core.create_namespaced_config_map(namespace=namespace, body=configmap_manifest)
+        logger.info(f"Created ConfigMap for {name}")
 
         # Create Deployment
-        deployment_manifest = operator.create_deployment(
-            name, spec_for_deployment, namespace, deployment_type
-        )
+        deployment_manifest = operator.create_deployment(name, spec_for_deployment, namespace)
         k8s_apps.create_namespaced_deployment(namespace=namespace, body=deployment_manifest)
         logger.info(f"Created deployment for {name}")
 
@@ -832,7 +772,7 @@ async def create_mcpservice(spec, name, namespace, logger, **_kwargs):  # type: 
         return {
             "phase": "Running",
             "namespace": namespace,
-            "deploymentType": deployment_type,
+            "deploymentType": "http",
             "conditions": [
                 {
                     "type": "Ready",

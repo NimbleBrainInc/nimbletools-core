@@ -2,7 +2,7 @@
 
 ## Core Principle: No Server-Specific Logic
 
-All platform components (operator, control-plane, universal-adapter) must remain completely generic and server-agnostic. They process server definitions from the registry but never contain server-specific logic.
+All platform components (operator, control-plane) must remain completely generic and server-agnostic. They process server definitions from the registry but never contain server-specific logic.
 
 ## Configuration Over Code
 
@@ -26,9 +26,10 @@ The platform is driven by **declarative server definitions** from the registry. 
 - Routes requests and validates schemas generically
 - Never contains server-specific API logic or special cases
 
-**Universal Adapter**: Wraps stdio servers for HTTP transport
-- Executes any server based on package definition
-- Never contains server-specific wrapper logic
+**MCPB Base Images**: Runtime containers for MCPB bundles
+- Execute bundles based on manifest configuration
+- Never contain server-specific wrapper logic
+- Supergateway images handle stdio-to-HTTP wrapping generically
 
 ## Correct Approach
 
