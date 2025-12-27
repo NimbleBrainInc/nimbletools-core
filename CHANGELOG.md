@@ -5,6 +5,35 @@ All notable changes to NimbleTools Core will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Release 0.4.0
+
+### Added
+
+- MCPB bundle deployment with multi-runtime support
+  - `python:X.Y` - Python HTTP servers (FastMCP, uvicorn)
+  - `node:X` - Node.js HTTP servers
+  - `supergateway-python:X.Y` - stdio servers wrapped as HTTP via supergateway
+  - `binary` - Pre-compiled executables (Go, Rust)
+- Base images infrastructure (`base-images/`)
+- mcpb-loader scripts for bundle download/extraction/verification
+- GitHub Actions workflow for building base images
+- Per-package architecture validation (returns 422 if unsupported)
+- RBAC permissions for node list to enable architecture detection
+
+### Fixed
+
+- Logs endpoint datetime comparison error when filtering by since/until
+
+### Changed
+
+- Added `runtime` field to NimbleToolsRuntime model
+- Added `sha256` dict to Package model for integrity verification
+- Updated operator probe timings for bundle download (30s liveness, 15s readiness)
+
+### Removed
+
+- Universal adapter component
+
 ## [0.3.0] - 2025-12-22
 
 ### Changed
