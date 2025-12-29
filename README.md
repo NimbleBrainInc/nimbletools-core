@@ -66,20 +66,21 @@ kubectl get pods
 
 ```bash
 # Fetch the echo server definition from the registry
-curl https://registry.nimbletools.ai/v0/servers/ai.nimblebrain%2Fecho > echo-server.json
+curl https://registry.nimbletools.ai/v0.1/servers/ai.nimblebrain%2Fecho > echo-server.json
 
 # Create a workspace
 curl -X POST http://api.nimbletools.dev/v1/workspaces \
   -H "Content-Type: application/json" \
   -d '{"name": "my-workspace", "description": "My first workspace"}'
+# Response: {"id": "550e8400-e29b-41d4-a716-446655440000", "name": "my-workspace", ...}
 
-# Deploy the echo server
-curl -X POST http://api.nimbletools.dev/v1/workspaces/my-workspace/servers \
+# Deploy the echo server (use workspace_id from response)
+curl -X POST http://api.nimbletools.dev/v1/workspaces/550e8400-e29b-41d4-a716-446655440000/servers \
   -H "Content-Type: application/json" \
   -d @echo-server.json
 
 # Verify the service is running
-kubectl get pods -n ws-my-workspace
+kubectl get pods -n ws-my-workspace-550e8400-e29b-41d4-a716-446655440000
 ```
 
 **Success!** 🎉 You now have a production MCP service that scales and integrates with any MCP client.
@@ -159,14 +160,14 @@ Instead of hunting for MCP services across GitHub repos and documentation, brows
 
 ```bash
 # Browse all available services
-curl https://registry.nimbletools.ai/v0/servers | jq '.servers[].name'
+curl https://registry.nimbletools.ai/v0.1/servers | jq '.servers[].name'
 
 # Get details for a specific server
-curl https://registry.nimbletools.ai/v0/servers/ai.nimblebrain%2Fecho
+curl https://registry.nimbletools.ai/v0.1/servers/ai.nimblebrain%2Fecho
 
-# Deploy any service instantly
-curl https://registry.nimbletools.ai/v0/servers/ai.nimbletools%2Fecho > echo-server.json
-curl -X POST http://api.nimbletools.dev/v1/workspaces/my-workspace/servers \
+# Deploy any service instantly (use workspace_id from workspace creation)
+curl https://registry.nimbletools.ai/v0.1/servers/ai.nimbletools%2Fecho > echo-server.json
+curl -X POST http://api.nimbletools.dev/v1/workspaces/550e8400-e29b-41d4-a716-446655440000/servers \
   -H "Content-Type: application/json" \
   -d @echo-server.json
 ```
