@@ -36,8 +36,4 @@ USER mcpuser
 WORKDIR /app
 EXPOSE 8000
 
-# Health check via supergateway's /health endpoint
-HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=3 \
-    CMD curl -sf http://localhost:8000/health || exit 1
-
 ENTRYPOINT ["/entrypoint.sh"]

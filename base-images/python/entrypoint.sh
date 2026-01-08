@@ -33,7 +33,10 @@ MODULE=$(echo "$ENTRY_POINT" | sed 's|/|.|g' | sed 's|\.py$||')
 # All dependencies are pre-vendored in the bundle for portability
 export PYTHONPATH="$BUNDLE_DIR:$BUNDLE_DIR/deps:$PYTHONPATH"
 
-# Start uvicorn (using python -m since uvicorn is in vendored deps)
+# Start the server
 echo "Starting server on port $PORT..."
 cd "$BUNDLE_DIR"
-exec python -m uvicorn "${MODULE}:app" --host 0.0.0.0 --port "$PORT"
+exec python -c "
+import uvicorn
+uvicorn.run('${MODULE}:app', host='0.0.0.0', port=${PORT}, log_level='info')
+"

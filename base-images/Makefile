@@ -11,7 +11,7 @@ SUPERGATEWAY_PYTHON_VERSIONS := 3.12 3.13 3.14
 # Default targets
 .PHONY: all python node supergateway binary clean help
 
-all: python node
+all: python node supergateway
 
 ##@ Python Images
 
@@ -61,51 +61,57 @@ binary:
 
 ##@ Multi-arch Builds (for CI/release)
 
-.PHONY: build-multiarch push
+.PHONY: push-multiarch push-multiarch-python push-multiarch-node push-multiarch-supergateway push-multiarch-binary
 
-build-multiarch:
-	@echo "Building multi-arch images..."
+# Build and push multi-arch images (the only way to do multi-arch with buildx)
+push-multiarch: push-multiarch-python push-multiarch-node push-multiarch-supergateway push-multiarch-binary
+	@echo "All multi-arch images pushed to $(REGISTRY)"
+
+push-multiarch-python:
 	@for v in $(PYTHON_VERSIONS); do \
-		echo "Building mcpb-python:$$v (linux/amd64,linux/arm64)..."; \
+		echo "Building and pushing mcpb-python:$$v (linux/amd64,linux/arm64)..."; \
 		docker buildx build \
 			--platform linux/amd64,linux/arm64 \
 			--build-arg PYTHON_VERSION=$$v \
 			-t $(REGISTRY)/mcpb-python:$$v \
 			-f python/Dockerfile \
+			--push \
 			python/; \
 	done
+
+push-multiarch-node:
 	@for v in $(NODE_VERSIONS); do \
-		echo "Building mcpb-node:$$v (linux/amd64,linux/arm64)..."; \
+		echo "Building and pushing mcpb-node:$$v (linux/amd64,linux/arm64)..."; \
 		docker buildx build \
 			--platform linux/amd64,linux/arm64 \
 			--build-arg NODE_VERSION=$$v \
 			-t $(REGISTRY)/mcpb-node:$$v \
 			-f node/Dockerfile \
+			--push \
 			node/; \
 	done
+
+push-multiarch-supergateway:
 	@for v in $(SUPERGATEWAY_PYTHON_VERSIONS); do \
-		echo "Building mcpb-supergateway-python:$$v (linux/amd64,linux/arm64)..."; \
+		echo "Building and pushing mcpb-supergateway-python:$$v (linux/amd64,linux/arm64)..."; \
 		docker buildx build \
 			--platform linux/amd64,linux/arm64 \
 			--build-arg PYTHON_VERSION=$$v \
 			--build-arg NODE_VERSION=22 \
 			-t $(REGISTRY)/mcpb-supergateway-python:$$v \
 			-f supergateway/Dockerfile \
+			--push \
 			supergateway/; \
 	done
 
-push:
-	@echo "Pushing all images to $(REGISTRY)..."
-	@for v in $(PYTHON_VERSIONS); do \
-		docker push $(REGISTRY)/mcpb-python:$$v; \
-	done
-	@for v in $(NODE_VERSIONS); do \
-		docker push $(REGISTRY)/mcpb-node:$$v; \
-	done
-	@for v in $(SUPERGATEWAY_PYTHON_VERSIONS); do \
-		docker push $(REGISTRY)/mcpb-supergateway-python:$$v; \
-	done
-	docker push $(REGISTRY)/mcpb-binary:latest
+push-multiarch-binary:
+	@echo "Building and pushing mcpb-binary:latest (linux/amd64,linux/arm64)..."
+	docker buildx build \
+		--platform linux/amd64,linux/arm64 \
+		-t $(REGISTRY)/mcpb-binary:latest \
+		-f binary/Dockerfile \
+		--push \
+		binary/
 
 ##@ k3d Import (for local development)
 
@@ -172,22 +178,29 @@ help:
 	@echo "  Supergateway-Python: $(SUPERGATEWAY_PYTHON_VERSIONS)"
 	@echo "  Binary: latest"
 	@echo ""
-	@echo "Targets:"
-	@echo "  all                     Build python and node images (default)"
+	@echo "Local Development (single-arch, your machine's arch):"
+	@echo "  all                     Build python and node images"
 	@echo "  python                  Build all Python images"
 	@echo "  node                    Build all Node.js images"
-	@echo "  supergateway            Build all Supergateway images (stdio wrapper)"
-	@echo "  binary                  Build binary image (for pre-compiled executables)"
+	@echo "  supergateway            Build all Supergateway images"
+	@echo "  binary                  Build binary image"
 	@echo "  python-X.Y              Build specific Python version (e.g., python-3.13)"
 	@echo "  node-XX                 Build specific Node version (e.g., node-22)"
 	@echo "  supergateway-python-X.Y Build specific Supergateway version"
 	@echo "  import-k3d              Import images to local k3d cluster"
+	@echo ""
+	@echo "Release (multi-arch: amd64 + arm64, pushes to registry):"
+	@echo "  push-multiarch          Build and push ALL images (python, node, supergateway, binary)"
+	@echo "  push-multiarch-python   Build and push Python images only"
+	@echo "  push-multiarch-node     Build and push Node images only"
+	@echo "  push-multiarch-supergateway  Build and push Supergateway images only"
+	@echo "  push-multiarch-binary   Build and push binary image only"
+	@echo ""
+	@echo "Other:"
 	@echo "  test                    Run loader tests"
 	@echo "  clean                   Remove local images"
 	@echo ""
 	@echo "Examples:"
-	@echo "  make python-3.14                  # Build Python 3.14 image"
-	@echo "  make node-22                      # Build Node.js 22 image"
-	@echo "  make supergateway-python-3.14    # Build Supergateway with Python 3.14"
-	@echo "  make binary                       # Build binary image"
-	@echo "  make all supergateway import-k3d # Build all and import to k3d"
+	@echo "  make python-3.14 import-k3d      # Build and import Python 3.14 locally"
+	@echo "  make push-multiarch-python       # Release Python images (amd64+arm64)"
+	@echo "  make push-multiarch              # Release ALL base images"
