@@ -349,6 +349,10 @@ class CoreMCPOperator:
         if not isinstance(health_checks_enabled, bool):
             health_checks_enabled = True
 
+        # Get probe configuration from container config
+        health_config = container_config.get("healthCheck", {})
+        startup_config = container_config.get("startupProbe", {})
+
         # Get resource requirements
         resource_config = spec.get("resources", {})
         resources_spec = V1ResourceRequirements(
@@ -410,9 +414,12 @@ class CoreMCPOperator:
                                 liveness_probe=(
                                     V1Probe(
                                         http_get=V1HTTPGetAction(path=health_path, port="http"),
-                                        initial_delay_seconds=30,
-                                        period_seconds=10,
-                                        failure_threshold=3,
+                                        initial_delay_seconds=startup_config.get(
+                                            "initialDelaySeconds", 10
+                                        ),
+                                        period_seconds=health_config.get("interval", 10),
+                                        timeout_seconds=health_config.get("timeout", 5),
+                                        failure_threshold=health_config.get("retries", 3),
                                     )
                                     if health_checks_enabled
                                     else None
@@ -420,9 +427,12 @@ class CoreMCPOperator:
                                 readiness_probe=(
                                     V1Probe(
                                         http_get=V1HTTPGetAction(path=health_path, port="http"),
-                                        initial_delay_seconds=15,
-                                        period_seconds=5,
-                                        failure_threshold=3,
+                                        initial_delay_seconds=startup_config.get(
+                                            "initialDelaySeconds", 5
+                                        ),
+                                        period_seconds=health_config.get("interval", 5),
+                                        timeout_seconds=health_config.get("timeout", 5),
+                                        failure_threshold=health_config.get("retries", 3),
                                     )
                                     if health_checks_enabled
                                     else None

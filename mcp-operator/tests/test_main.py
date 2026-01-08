@@ -668,17 +668,55 @@ class TestCoreMCPOperator:
         assert container_security.run_as_non_root is True
         assert container_security.capabilities.drop == ["ALL"]
 
-    def test_http_deployment_different_probe_timings(self, operator: CoreMCPOperator) -> None:
-        """Test HTTP deployment probe timings."""
+    def test_http_deployment_default_probe_timings(self, operator: CoreMCPOperator) -> None:
+        """Test HTTP deployment uses sensible default probe timings."""
         spec = {"container": {"image": "test:latest"}}
 
         result = operator._create_http_deployment("test", spec, "test-ns")
 
         container = result.spec.template.spec.containers[0]
 
-        # HTTP deployment allows time for MCPB bundle download/extract
-        assert container.liveness_probe.initial_delay_seconds == 30
-        assert container.readiness_probe.initial_delay_seconds == 15
+        # Default probe timings optimized for fast-starting MCPB bundles
+        assert container.liveness_probe.initial_delay_seconds == 10
+        assert container.liveness_probe.period_seconds == 10
+        assert container.liveness_probe.timeout_seconds == 5
+        assert container.liveness_probe.failure_threshold == 3
+        assert container.readiness_probe.initial_delay_seconds == 5
+        assert container.readiness_probe.period_seconds == 5
+        assert container.readiness_probe.timeout_seconds == 5
+        assert container.readiness_probe.failure_threshold == 3
+
+    def test_http_deployment_custom_probe_config(self, operator: CoreMCPOperator) -> None:
+        """Test HTTP deployment respects custom probe configuration from container config."""
+        spec = {
+            "container": {
+                "image": "test:latest",
+                "healthCheck": {
+                    "interval": 30,
+                    "timeout": 10,
+                    "retries": 5,
+                },
+                "startupProbe": {
+                    "initialDelaySeconds": 60,
+                    "periodSeconds": 15,
+                    "failureThreshold": 10,
+                },
+            }
+        }
+
+        result = operator._create_http_deployment("test", spec, "test-ns")
+
+        container = result.spec.template.spec.containers[0]
+
+        # Custom probe timings from container config
+        assert container.liveness_probe.initial_delay_seconds == 60
+        assert container.liveness_probe.period_seconds == 30
+        assert container.liveness_probe.timeout_seconds == 10
+        assert container.liveness_probe.failure_threshold == 5
+        assert container.readiness_probe.initial_delay_seconds == 60
+        assert container.readiness_probe.period_seconds == 30
+        assert container.readiness_probe.timeout_seconds == 10
+        assert container.readiness_probe.failure_threshold == 5
 
     def test_ingress_annotations_configuration(self, operator: CoreMCPOperator) -> None:
         """Test ingress has correct nginx annotations."""

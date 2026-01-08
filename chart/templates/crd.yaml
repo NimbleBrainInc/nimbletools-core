@@ -300,6 +300,44 @@ spec:
                       maximum: 65535
                       default: 8000
                       description: "Container port number"
+                    healthCheck:
+                      type: object
+                      description: "Health check configuration for probes"
+                      properties:
+                        interval:
+                          type: integer
+                          default: 10
+                          minimum: 1
+                          description: "Health check interval in seconds"
+                        timeout:
+                          type: integer
+                          default: 5
+                          minimum: 1
+                          description: "Health check timeout in seconds"
+                        retries:
+                          type: integer
+                          default: 3
+                          minimum: 1
+                          description: "Number of retries before marking unhealthy"
+                    startupProbe:
+                      type: object
+                      description: "Startup probe configuration for slow-starting containers"
+                      properties:
+                        initialDelaySeconds:
+                          type: integer
+                          default: 10
+                          minimum: 0
+                          description: "Initial delay before starting probes"
+                        periodSeconds:
+                          type: integer
+                          default: 10
+                          minimum: 1
+                          description: "How often to perform the probe"
+                        failureThreshold:
+                          type: integer
+                          default: 3
+                          minimum: 1
+                          description: "Number of failures before marking as failed"
                 environment:
                   type: object
                   additionalProperties:
