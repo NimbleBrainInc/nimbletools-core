@@ -110,6 +110,18 @@ make supergateway-python-3.14 # Build Supergateway with Python 3.14
 make binary                   # Build binary image
 ```
 
+### Releasing Base Images (Multi-arch)
+
+Production K8s clusters may have mixed architectures. Base images must be multi-arch (amd64 + arm64).
+
+```bash
+cd base-images
+make push-multiarch-python    # Python images only
+make push-multiarch           # ALL base images
+```
+
+**Note**: Multi-arch builds require `--push` during build (can't load multi-arch locally). If you see `exec format error` in K8s, the image was built for wrong architecture.
+
 ## Standards References
 
 Read these when working on relevant tasks:
