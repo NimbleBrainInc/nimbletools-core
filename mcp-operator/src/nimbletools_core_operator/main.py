@@ -516,7 +516,10 @@ class CoreMCPOperator:
             if bundle_url:
                 env_vars.append(V1EnvVar(name="BUNDLE_URL", value=bundle_url))
 
-        for package in packages:
+        # Only process env vars from selected package to avoid duplicates
+        # when multiple architecture variants define the same variables
+        packages_to_process = [selected_package] if selected_package else packages
+        for package in packages_to_process:
             env_variables = package.get("environmentVariables", [])
             for env_var in env_variables:
                 name = env_var.get("name")

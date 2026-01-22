@@ -253,6 +253,43 @@ class TestCoreMCPOperator:
         assert env_vars[1].name == "LOG_LEVEL"
         assert env_vars[1].value == "info"
 
+    def test_create_env_vars_from_packages_no_duplicates_multi_arch(
+        self, operator: CoreMCPOperator
+    ) -> None:
+        """Test that env vars are not duplicated when multiple arch packages exist."""
+        packages = [
+            {
+                "identifier": "https://example.com/bundle-linux-amd64.tar.gz",
+                "environmentVariables": [
+                    {"name": "API_KEY", "isSecret": True, "isRequired": True},
+                    {"name": "LOG_LEVEL", "default": "info"},
+                ],
+            },
+            {
+                "identifier": "https://example.com/bundle-linux-arm64.tar.gz",
+                "environmentVariables": [
+                    {"name": "API_KEY", "isSecret": True, "isRequired": True},
+                    {"name": "LOG_LEVEL", "default": "info"},
+                ],
+            },
+        ]
+        # Mock selecting the amd64 package
+        with (
+            patch.object(operator, "_get_workspace_secret_keys", return_value={"API_KEY"}),
+            patch.object(operator, "_select_package_for_cluster", return_value=packages[0]),
+        ):
+            env_vars = operator._create_env_vars_from_packages(
+                packages, "test-namespace", "test-server"
+            )
+
+        # Should have 3 env vars: BUNDLE_URL, API_KEY, LOG_LEVEL (no duplicates)
+        assert len(env_vars) == 3
+        env_var_names = [ev.name for ev in env_vars]
+        assert env_var_names == ["BUNDLE_URL", "API_KEY", "LOG_LEVEL"]
+        # API_KEY should be a secret reference
+        assert env_vars[1].value_from is not None
+        assert env_vars[1].value_from.secret_key_ref.key == "API_KEY"
+
     def test_select_package_for_cluster_prefers_matching_architecture(
         self, operator: CoreMCPOperator
     ) -> None:
