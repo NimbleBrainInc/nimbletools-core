@@ -108,7 +108,7 @@ dev-publish: ## Push development images to Docker Hub (appends -dev suffix)
 	@echo ""
 	@echo "This will push development images to Docker Hub."
 	@echo "The 'latest' tag will NOT be updated."
-	@read -p "Continue? (y/N): " confirm && [ "$$confirm" = "y" ] || exit 1
+	@read -p "Continue? (y/N): " confirm </dev/tty && [ "$$confirm" = "y" ] || exit 1
 	@./scripts/build-images.sh --production --tag $(VERSION)-dev --no-latest
 
 publish-images: ## Build and push stable Docker images to Docker Hub
@@ -116,7 +116,7 @@ publish-images: ## Build and push stable Docker images to Docker Hub
 	@echo "Version: $(VERSION)"
 	@echo ""
 	@echo "This will push images to Docker Hub!"
-	@read -p "Continue? (y/N): " confirm && [ "$$confirm" = "y" ] || exit 1
+	@read -p "Continue? (y/N): " confirm </dev/tty && [ "$$confirm" = "y" ] || exit 1
 	@./scripts/build-images.sh --production
 
 publish-chart: ## Package and push Helm chart to GHCR
@@ -125,7 +125,7 @@ publish-chart: ## Package and push Helm chart to GHCR
 	@echo "Version: $(VERSION)"
 	@echo ""
 	@echo "This will push the chart to GitHub Container Registry!"
-	@read -p "Continue? (y/N): " confirm && [ "$$confirm" = "y" ] || exit 1
+	@read -p "Continue? (y/N): " confirm </dev/tty && [ "$$confirm" = "y" ] || exit 1
 	@helm package chart/ --destination ./dist/
 	@helm push dist/$(CHART_NAME)-$(VERSION).tgz oci://$(REGISTRY)/charts
 	@echo "Chart published: oci://$(REGISTRY)/charts/$(CHART_NAME):$(VERSION)"
